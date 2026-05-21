@@ -67,6 +67,9 @@ const api = {
     lookupBarcode: (barcode: string, priceMode: PriceMode) =>
       ipcRenderer.invoke(IPC_CHANNELS.PRODUCTS_LOOKUP_BARCODE, barcode, priceMode),
     searchProducts: (query: string) => ipcRenderer.invoke(IPC_CHANNELS.PRODUCTS_SEARCH_POS, query)
+  },
+  dashboard: {
+    getStats: () => ipcRenderer.invoke(IPC_CHANNELS.DASHBOARD_STATS)
   }
 }
 

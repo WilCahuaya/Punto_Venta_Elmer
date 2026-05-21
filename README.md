@@ -2,7 +2,14 @@
 
 Sistema POS offline para Windows — Electron + React + SQLite.
 
-## Fase 4 (actual)
+## Fase 5 (actual)
+
+- **Dashboard** con KPIs reales del día
+- Ventas, ganancias, tickets, caja abierta/cerrada
+- Top productos vendidos hoy y alertas de stock bajo
+- Resumen del turno de caja actual
+
+## Fase 4
 
 - **Configuración**: empresa, logo, dirección
 - Detección de impresoras Windows y selección ticket / etiquetas
@@ -85,5 +92,5 @@ database/       → Migraciones SQL
 
 ## Próxima fase
 
-**Fase 5** — Dashboard KPIs completos
+**Fase 6** — Etiquetas con código de barras
 # Punto_Venta_Elmer

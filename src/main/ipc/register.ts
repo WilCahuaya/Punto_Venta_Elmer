@@ -1,4 +1,5 @@
 import { registerAuthIpc } from '../modules/auth/auth.ipc'
+import { registerDashboardIpc } from '../modules/dashboard/dashboard.ipc'
 import { registerCashIpc } from '../modules/cash/cash.ipc'
 import { registerSalesIpc } from '../modules/sales/sales.ipc'
 import { registerCategoriesIpc } from '../modules/categories/categories.ipc'
@@ -12,4 +13,5 @@ export function registerIpcHandlers(): void {
   registerProductsIpc()
   registerCashIpc()
   registerSalesIpc()
+  registerDashboardIpc()
 }

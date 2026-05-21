@@ -8,6 +8,7 @@ import { ProductsPage } from '../pages/Products/ProductsPage'
 import { CashPage } from '../pages/Cash/CashPage'
 import { PosPage } from '../pages/Pos/PosPage'
 import { SettingsPage } from '../pages/Settings/SettingsPage'
+import { LabelsPage } from '../pages/Labels/LabelsPage'
 import { PlaceholderPage } from '../pages/Placeholder/PlaceholderPage'
 import { useAuthStore } from '../stores/auth.store'
 
@@ -46,7 +47,7 @@ export function AppRoutes(): React.JSX.Element {
         <Route path="/pos" element={<PosPage />} />
         <Route path="/products" element={<ProductsPage />} />
         <Route path="/categories" element={<CategoriesPage />} />
-        <Route path="/labels" element={<PlaceholderPage title="Etiquetas" phase="Fase 6" />} />
+        <Route path="/labels" element={<LabelsPage />} />
         <Route path="/cash" element={<CashPage />} />
         <Route path="/reports" element={<PlaceholderPage title="Reportes" phase="Fase 7" />} />
         <Route path="/backups" element={<PlaceholderPage title="Backups" phase="Fase 8" />} />

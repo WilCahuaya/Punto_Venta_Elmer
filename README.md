@@ -2,7 +2,15 @@
 
 Sistema POS offline para Windows — Electron + React + SQLite.
 
-## Fase 5 (actual)
+## Fase 6 (actual)
+
+- **Etiquetas** con JsBarcode (CODE128)
+- Código existente o generación automática única
+- Cola de impresión con copias múltiples (hasta 500)
+- Impresión térmica vía `printer_labels` (Configuración)
+- Asignar código generado a un producto
+
+## Fase 5
 
 - **Dashboard** con KPIs reales del día
 - Ventas, ganancias, tickets, caja abierta/cerrada
@@ -92,5 +100,5 @@ database/       → Migraciones SQL
 
 ## Próxima fase
 
-**Fase 6** — Etiquetas con código de barras
+**Fase 7** — Reportes PDF y Excel
 # Punto_Venta_Elmer

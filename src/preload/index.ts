@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC_CHANNELS } from '@shared/constants/ipc'
 import type { LoginPayload } from '@shared/types/api'
+import type { LabelPrintPayload } from '@shared/types/labels'
 import type { SettingsUpdateInput } from '@shared/types/settings'
 import type {
   CashHistoryFilters,
@@ -70,6 +71,11 @@ const api = {
   },
   dashboard: {
     getStats: () => ipcRenderer.invoke(IPC_CHANNELS.DASHBOARD_STATS)
+  },
+  labels: {
+    generateBarcode: () => ipcRenderer.invoke(IPC_CHANNELS.LABELS_GENERATE_BARCODE),
+    checkBarcode: (barcode: string) => ipcRenderer.invoke(IPC_CHANNELS.LABELS_CHECK_BARCODE, barcode),
+    print: (payload: LabelPrintPayload) => ipcRenderer.invoke(IPC_CHANNELS.LABELS_PRINT, payload)
   }
 }
 

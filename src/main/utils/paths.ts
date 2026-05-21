@@ -5,6 +5,10 @@ export function getDbPath(): string {
   return join(app.getPath('userData'), 'pos.db')
 }
 
+export function getBackupsDir(): string {
+  return join(app.getPath('userData'), 'backups')
+}
+
 export function getImagesDir(): string {
   return join(app.getPath('userData'), 'images')
 }

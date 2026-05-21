@@ -40,5 +40,12 @@ export const IPC_CHANNELS = {
   REPORTS_SUMMARY: 'reports:summary',
   REPORTS_EXPORT_PDF: 'reports:exportPdf',
   REPORTS_EXPORT_EXCEL: 'reports:exportExcel',
-  SALES_VOID: 'sales:void'
+  SALES_VOID: 'sales:void',
+  BACKUP_LIST: 'backup:list',
+  BACKUP_STATUS: 'backup:status',
+  BACKUP_CREATE: 'backup:create',
+  BACKUP_RESTORE: 'backup:restore',
+  BACKUP_EXPORT: 'backup:export',
+  BACKUP_IMPORT: 'backup:import',
+  BACKUP_DELETE: 'backup:delete'
 } as const

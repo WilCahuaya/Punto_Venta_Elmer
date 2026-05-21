@@ -21,7 +21,9 @@ const ALLOWED_KEYS = new Set([
   'company_address',
   'company_logo_path',
   'printer_ticket',
-  'printer_labels'
+  'printer_labels',
+  'backup_auto_enabled',
+  'backup_retention_days'
 ])
 
 function getSettingsMap(db: ReturnType<typeof getDatabase>): Record<string, string> {

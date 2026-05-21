@@ -5,6 +5,7 @@ import { createMainWindow } from './app/window'
 import { closeDatabase, getDatabase } from './database/connection'
 import { runMigrations } from './database/migrate'
 import { seedDatabase } from './database/seed'
+import { runAutoBackupIfNeeded } from './modules/backup/backup.service'
 import { registerIpcHandlers } from './ipc/register'
 
 registerMediaScheme()
@@ -22,6 +23,7 @@ app.whenReady().then(() => {
 
   setupMediaProtocolHandler()
   registerIpcHandlers()
+  void runAutoBackupIfNeeded()
   createMainWindow()
 
   app.on('activate', () => {

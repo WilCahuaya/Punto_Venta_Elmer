@@ -23,7 +23,9 @@ export function seedDatabase(database: Database.Database): void {
     company_name: 'Mi Negocio',
     company_address: '',
     printer_ticket: '',
-    printer_labels: ''
+    printer_labels: '',
+    backup_auto_enabled: 'true',
+    backup_retention_days: '30'
   }
 
   const upsert = database.prepare(

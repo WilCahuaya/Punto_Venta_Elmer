@@ -1,3 +1,4 @@
+import { registerBackupIpc } from '../modules/backup/backup.ipc'
 import { registerAuthIpc } from '../modules/auth/auth.ipc'
 import { registerDashboardIpc } from '../modules/dashboard/dashboard.ipc'
 import { registerLabelsIpc } from '../modules/labels/labels.ipc'
@@ -18,4 +19,5 @@ export function registerIpcHandlers(): void {
   registerDashboardIpc()
   registerLabelsIpc()
   registerReportsIpc()
+  registerBackupIpc()
 }

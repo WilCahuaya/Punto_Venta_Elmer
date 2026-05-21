@@ -79,6 +79,15 @@ const api = {
     checkBarcode: (barcode: string) => ipcRenderer.invoke(IPC_CHANNELS.LABELS_CHECK_BARCODE, barcode),
     print: (payload: LabelPrintPayload) => ipcRenderer.invoke(IPC_CHANNELS.LABELS_PRINT, payload)
   },
+  backup: {
+    list: () => ipcRenderer.invoke(IPC_CHANNELS.BACKUP_LIST),
+    status: () => ipcRenderer.invoke(IPC_CHANNELS.BACKUP_STATUS),
+    create: () => ipcRenderer.invoke(IPC_CHANNELS.BACKUP_CREATE),
+    restore: (id: number) => ipcRenderer.invoke(IPC_CHANNELS.BACKUP_RESTORE, id),
+    export: (id: number) => ipcRenderer.invoke(IPC_CHANNELS.BACKUP_EXPORT, id),
+    import: () => ipcRenderer.invoke(IPC_CHANNELS.BACKUP_IMPORT),
+    delete: (id: number) => ipcRenderer.invoke(IPC_CHANNELS.BACKUP_DELETE, id)
+  },
   reports: {
     getSummary: (range: ReportDateRange) =>
       ipcRenderer.invoke(IPC_CHANNELS.REPORTS_SUMMARY, range),

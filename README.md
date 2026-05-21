@@ -2,7 +2,13 @@
 
 Sistema POS offline para Windows — Electron + React + SQLite.
 
-## Fase 7 (actual)
+## Fase 8 (actual) — Sistema completo MVP
+
+- **Backups** automático diario al iniciar (+ retención 30 días)
+- Backup manual, restauración, exportar e importar `.db`
+- Usa API nativa `better-sqlite3` backup (seguro con WAL)
+
+## Fase 7
 
 - **Reportes** con filtro por fechas (hoy, 7 y 30 días)
 - Exportación **PDF** (pdfmake) y **Excel** (ExcelJS)
@@ -107,5 +113,5 @@ database/       → Migraciones SQL
 
 ## Próxima fase
 
-**Fase 8** — Backups automáticos y restauración
+**Mejoras futuras** — Empaquetado Windows, cambio de contraseña, más reportes
 # Punto_Venta_Elmer

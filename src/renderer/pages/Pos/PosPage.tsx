@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { Product } from '@shared/types/catalog'
-import { productToPosProduct, type PosProduct } from '@shared/types/sales'
-import { Badge } from '../../components/ui/Badge'
+import { productToPosProduct } from '@shared/types/sales'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { MoneyDisplay } from '../../components/ui/MoneyDisplay'
@@ -19,10 +18,8 @@ export function PosPage(): React.JSX.Element {
   const refreshCash = useCashStore((s) => s.refresh)
   const soundsEnabled = useSettingsStore((s) => s.soundsEnabled)
 
-  const priceMode = usePosStore((s) => s.priceMode)
   const lines = usePosStore((s) => s.lines)
   const discount = usePosStore((s) => s.discount)
-  const togglePriceMode = usePosStore((s) => s.togglePriceMode)
   const addProduct = usePosStore((s) => s.addProduct)
   const updateQuantity = usePosStore((s) => s.updateQuantity)
   const removeLine = usePosStore((s) => s.removeLine)
@@ -37,7 +34,7 @@ export function PosPage(): React.JSX.Element {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<Product[]>([])
   const [searching, setSearching] = useState(false)
-  const [qtyProduct, setQtyProduct] = useState<PosProduct | null>(null)
+  const [qtyProduct, setQtyProduct] = useState<ReturnType<typeof productToPosProduct> | null>(null)
   const [paymentOpen, setPaymentOpen] = useState(false)
   const [statusMsg, setStatusMsg] = useState<string | null>(null)
 
@@ -74,7 +71,7 @@ export function PosPage(): React.JSX.Element {
     let product: Product | null = null
 
     if (source === 'barcode') {
-      const res = await window.api.sales.lookupBarcode(codeOrId, priceMode)
+      const res = await window.api.sales.lookupBarcode(codeOrId)
       if (!res.ok) {
         setStatusMsg(res.error)
         if (soundsEnabled) playErrorSound()
@@ -94,7 +91,7 @@ export function PosPage(): React.JSX.Element {
     }
 
     if (soundsEnabled) playScanSound()
-    setQtyProduct(productToPosProduct(product, priceMode))
+    setQtyProduct(productToPosProduct(product))
   }
 
   function handleBarcodeKeyDown(e: React.KeyboardEvent<HTMLInputElement>): void {
@@ -106,9 +103,20 @@ export function PosPage(): React.JSX.Element {
     }
   }
 
-  function handleConfirmQty(quantity: number): void {
+  function handleConfirmQty(quantity: number, unitPrice: number, priceLabel: string): void {
     if (!qtyProduct) return
-    addProduct(qtyProduct, quantity)
+    addProduct(
+      {
+        id: qtyProduct.id,
+        name: qtyProduct.name,
+        barcode: qtyProduct.barcode,
+        stock: qtyProduct.stock,
+        costPrice: qtyProduct.costPrice
+      },
+      quantity,
+      unitPrice,
+      priceLabel
+    )
     setQtyProduct(null)
     focusBarcode()
   }
@@ -116,7 +124,6 @@ export function PosPage(): React.JSX.Element {
   async function handlePayment(amountPaid: number): Promise<void> {
     const result = await window.api.sales.create({
       items: toSaleItems(),
-      priceMode,
       amountPaid,
       discount
     })
@@ -148,12 +155,6 @@ export function PosPage(): React.JSX.Element {
         e.preventDefault()
         searchRef.current?.focus()
       }
-      if (e.key === 'F3') {
-        e.preventDefault()
-        togglePriceMode()
-        const mode = usePosStore.getState().priceMode
-        setStatusMsg(`Precio ${mode === 'retail' ? 'menor' : 'mayor'} — carrito vaciado`)
-      }
       if (e.key === 'F4') {
         e.preventDefault()
         if (lines.length && confirm('¿Vaciar carrito?')) clearCart()
@@ -165,7 +166,7 @@ export function PosPage(): React.JSX.Element {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [lines.length, priceMode, togglePriceMode, clearCart])
+  }, [lines.length, clearCart])
 
   if (cashLoading) {
     return (
@@ -191,7 +192,6 @@ export function PosPage(): React.JSX.Element {
 
   return (
     <div className="flex h-[calc(100vh-3rem)] flex-col gap-4">
-      {/* Barra superior: escáner + atajos */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="min-w-[280px] flex-1">
           <input
@@ -200,31 +200,21 @@ export function PosPage(): React.JSX.Element {
             value={barcodeBuffer}
             onChange={(e) => setBarcodeBuffer(e.target.value)}
             onKeyDown={handleBarcodeKeyDown}
-            placeholder="Escáner USB — escanee aquí (Enter)"
+            placeholder="Escanee el código de barras aquí"
             autoComplete="off"
             className="w-full rounded-lg border-2 border-brand/40 bg-surface-elevated px-4 py-2.5 font-mono text-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
           />
         </div>
-        <Badge variant={priceMode === 'retail' ? 'default' : 'warning'}>
-          Precio {priceMode === 'retail' ? 'menor' : 'mayor'}
-        </Badge>
-        <Button variant="secondary" type="button" onClick={() => togglePriceMode()}>
-          F3 — Cambiar precio
-        </Button>
-        <span className="text-xs text-[rgb(var(--text-muted))]">
-          F2 Buscar · F4 Vaciar · F12 Cobrar · Escáner activo
-        </span>
         {statusMsg && (
           <span className="ml-auto text-sm text-brand">{statusMsg}</span>
         )}
       </div>
 
       <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-5">
-        {/* Búsqueda */}
         <div className="flex flex-col gap-3 lg:col-span-2">
           <Input
             ref={searchRef}
-            label="Búsqueda manual (F2)"
+            label="Búsqueda manual"
             placeholder="Nombre o código..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -260,13 +250,7 @@ export function PosPage(): React.JSX.Element {
                         )}
                       </span>
                       <span className="shrink-0 text-xs">
-                        Stock {p.stock} ·{' '}
-                        <MoneyDisplay
-                          amount={
-                            priceMode === 'wholesale' ? p.priceWholesale : p.priceRetail
-                          }
-                          size="sm"
-                        />
+                        Stock {p.stock} · <MoneyDisplay amount={p.priceRetail} size="sm" />
                       </span>
                     </button>
                   </li>
@@ -276,7 +260,6 @@ export function PosPage(): React.JSX.Element {
           </div>
         </div>
 
-        {/* Carrito */}
         <div className="flex min-h-0 flex-col lg:col-span-3">
           <div className="mb-2 flex items-center justify-between">
             <h3 className="font-semibold">Carrito ({lines.length})</h3>
@@ -313,11 +296,12 @@ export function PosPage(): React.JSX.Element {
                     <tr key={line.key} className="border-b border-surface-border/50">
                       <td className="px-3 py-2">
                         <div className="font-medium">{line.name}</div>
-                        {line.barcode && (
-                          <div className="font-mono text-xs text-[rgb(var(--text-muted))]">
-                            {line.barcode}
-                          </div>
-                        )}
+                        <div className="text-xs text-[rgb(var(--text-muted))]">
+                          {line.priceLabel}
+                          {line.barcode && (
+                            <span className="ml-2 font-mono">{line.barcode}</span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-3 py-2">
                         <input
@@ -376,7 +360,7 @@ export function PosPage(): React.JSX.Element {
               onClick={() => setPaymentOpen(true)}
               className="min-w-[160px] px-8 py-3 text-base"
             >
-              F12 — Cobrar
+              Cobrar
             </Button>
           </div>
         </div>

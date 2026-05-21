@@ -116,7 +116,7 @@ export function createSaleService(input: CreateSaleInput): ApiResult<Sale> {
         total: toMoneyDb(total),
         amountPaid: toMoneyDb(amountPaid),
         changeAmount: toMoneyDb(changeAmount),
-        priceMode: input.priceMode,
+        priceMode: input.priceMode ?? 'retail',
         createdBy: userId
       })
 
@@ -180,7 +180,7 @@ export function voidSaleService(saleId: number, reason: string): ApiResult<Sale>
   }
 }
 
-export function lookupBarcodeForPos(barcode: string, priceMode: PriceMode): ApiResult<ReturnType<typeof mapProductRow>> {
+export function lookupBarcodeForPos(barcode: string): ApiResult<ReturnType<typeof mapProductRow>> {
   const code = barcode.trim()
   if (!code) return { ok: false, error: 'Código vacío' }
   const db = getDatabase()

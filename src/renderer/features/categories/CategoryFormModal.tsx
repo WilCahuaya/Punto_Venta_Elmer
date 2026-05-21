@@ -3,16 +3,20 @@ import type { Category, CategoryInput } from '@shared/types/catalog'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { Modal } from '../../components/ui/Modal'
+import { Select } from '../../components/ui/Select'
+import { buildParentCategoryOptions } from '../../lib/category-options'
 
 interface CategoryFormModalProps {
   open: boolean
   category: Category | null
+  allCategories: Category[]
   onClose: () => void
   onSaved: () => void
 }
 
 const emptyForm: CategoryInput = {
   name: '',
+  parentId: null,
   description: '',
   sortOrder: 0,
   isActive: true
@@ -21,6 +25,7 @@ const emptyForm: CategoryInput = {
 export function CategoryFormModal({
   open,
   category,
+  allCategories,
   onClose,
   onSaved
 }: CategoryFormModalProps): React.JSX.Element {
@@ -28,11 +33,16 @@ export function CategoryFormModal({
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
+  const parentOptions = buildParentCategoryOptions(
+    allCategories.filter((c) => !category || c.id !== category.id)
+  )
+
   useEffect(() => {
     if (!open) return
     if (category) {
       setForm({
         name: category.name,
+        parentId: category.parentId,
         description: category.description ?? '',
         sortOrder: category.sortOrder,
         isActive: category.isActive
@@ -50,6 +60,7 @@ export function CategoryFormModal({
 
     const payload: CategoryInput = {
       name: form.name,
+      parentId: form.parentId ? Number(form.parentId) : null,
       description: form.description || null,
       sortOrder: Number(form.sortOrder) || 0,
       isActive: form.isActive
@@ -68,6 +79,8 @@ export function CategoryFormModal({
     onClose()
   }
 
+  const isSubcategory = !!form.parentId
+
   return (
     <Modal
       open={open}
@@ -85,6 +98,30 @@ export function CategoryFormModal({
       }
     >
       <form id="category-form" onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
+        <Select
+          label="Tipo"
+          value={isSubcategory ? 'sub' : 'main'}
+          onChange={(v) =>
+            setForm({
+              ...form,
+              parentId: v === 'sub' ? (parentOptions[0] ? Number(parentOptions[0].value) : null) : null
+            })
+          }
+          options={[
+            { value: 'main', label: 'Categoría principal' },
+            { value: 'sub', label: 'Subcategoría' }
+          ]}
+        />
+        {isSubcategory && (
+          <Select
+            label="Categoría padre"
+            value={form.parentId ? String(form.parentId) : ''}
+            onChange={(v) => setForm({ ...form, parentId: v ? Number(v) : null })}
+            options={parentOptions}
+            placeholder="Seleccione categoría padre"
+            required
+          />
+        )}
         <Input
           label="Nombre"
           value={form.name}

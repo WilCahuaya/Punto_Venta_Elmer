@@ -1,5 +1,10 @@
 import type { ApiResult } from '@shared/types/api'
-import type { Product, ProductInput, ProductListFilters } from '@shared/types/catalog'
+import type {
+  AdjustStockInput,
+  Product,
+  ProductInput,
+  ProductListFilters
+} from '@shared/types/catalog'
 import { getDatabase } from '../../database/connection'
 import {
   deleteImageIfExists,
@@ -7,16 +12,20 @@ import {
   pickImageFile,
   storeProductImage
 } from '../../services/image.service'
-import { fromMoneyDb, toMoneyDb } from '../../utils/money-db'
+import { generateCandidateBarcode, generateProductCode } from '../../utils/barcode'
+import { toMoneyDb } from '../../utils/money-db'
 import {
   getProductByBarcode,
+  getProductByBarcodeRow,
+  getProductByCode,
   getProductById,
   insertProduct,
   listProducts,
   searchProductsPos,
   softDeleteProduct,
   updateProduct,
-  updateProductImagePath
+  updateProductImagePath,
+  updateProductStock
 } from './products.repository'
 import { mapProductRow } from './products.mapper'
 
@@ -25,35 +34,47 @@ function normalizeBarcode(barcode?: string | null): string | null {
   return v ? v : null
 }
 
+function normalizeProductCode(code?: string | null): string | null {
+  const v = code?.trim()
+  return v ? v : null
+}
+
 function validateProductInput(input: ProductInput, isUpdate = false): string | null {
   if (!input.name?.trim()) return 'El nombre es obligatorio'
-  if (input.priceRetail == null || input.priceWholesale == null) {
-    return 'Los precios menor y mayor son obligatorios'
+  if (input.priceRetail == null || input.priceRetail < 0) {
+    return 'El precio normal es obligatorio y no puede ser negativo'
   }
-  if (input.priceRetail < 0 || input.priceWholesale < 0 || (input.costPrice ?? 0) < 0) {
-    return 'Los precios no pueden ser negativos'
-  }
+  const wholesale = input.priceWholesale
+  if (wholesale != null && wholesale < 0) return 'El precio por mayor no puede ser negativo'
   if ((input.stock ?? 0) < 0 || (input.stockMin ?? 0) < 0) {
     return 'El stock no puede ser negativo'
   }
-  if (!isUpdate && input.priceWholesale > input.priceRetail) {
-    // allow wholesale > retail? Usually wholesale is lower - warn but allow for flexibility
+  if (!isUpdate && wholesale != null && wholesale > input.priceRetail) {
+    // permitido
   }
   return null
 }
 
-function buildProductData(input: ProductInput, imagePath: string | null) {
+function buildProductData(input: ProductInput, imagePath: string | null, productCode: string | null) {
+  const wholesale =
+    input.priceWholesale != null && input.priceWholesale > 0
+      ? toMoneyDb(input.priceWholesale)
+      : toMoneyDb(0)
+
   return {
+    productCode,
     name: input.name.trim(),
     barcode: normalizeBarcode(input.barcode),
     categoryId: input.categoryId ?? null,
     stock: input.stock ?? 0,
     stockMin: input.stockMin ?? 0,
+    brand: input.brand?.trim() || null,
     size: input.size?.trim() || null,
     color: input.color?.trim() || null,
+    description: input.description?.trim() || null,
     costPrice: toMoneyDb(input.costPrice ?? 0),
     priceRetail: toMoneyDb(input.priceRetail),
-    priceWholesale: toMoneyDb(input.priceWholesale),
+    priceWholesale: wholesale,
     imagePath,
     isActive: input.isActive === false ? 0 : 1
   }
@@ -88,14 +109,44 @@ export function getProductService(id: number): ApiResult<Product> {
   return { ok: true, data: mapProductRow(row) }
 }
 
+export function lookupProductByBarcodeService(barcode: string): ApiResult<Product> {
+  const code = barcode.trim()
+  if (!code) return { ok: false, error: 'Código vacío' }
+  const db = getDatabase()
+  const row = getProductByBarcodeRow(db, code)
+  if (!row) return { ok: false, error: 'Producto no encontrado' }
+  return { ok: true, data: mapProductRow(row) }
+}
+
+export function adjustStockService(input: AdjustStockInput): ApiResult<Product> {
+  if (input.stock < 0) return { ok: false, error: 'El stock no puede ser negativo' }
+  const db = getDatabase()
+  const existing = getProductById(db, input.productId)
+  if (!existing) return { ok: false, error: 'Producto no encontrado' }
+  updateProductStock(db, input.productId, input.stock)
+  return getProductService(input.productId)
+}
+
 export function createProductService(input: ProductInput): ApiResult<Product> {
   const err = validateProductInput(input)
   if (err) return { ok: false, error: err }
 
   const db = getDatabase()
-  const barcode = normalizeBarcode(input.barcode)
+
+  let barcode = normalizeBarcode(input.barcode)
+  if (!barcode && !input.skipAutoBarcode) {
+    barcode = generateCandidateBarcode(db)
+  }
   if (barcode && getProductByBarcode(db, barcode)) {
     return { ok: false, error: 'El código de barras ya está registrado' }
+  }
+
+  let productCode = normalizeProductCode(input.productCode)
+  if (!productCode) {
+    productCode = generateProductCode(db)
+  }
+  if (getProductByCode(db, productCode)) {
+    return { ok: false, error: 'El código de producto ya está registrado' }
   }
 
   if (input.categoryId) {
@@ -103,7 +154,8 @@ export function createProductService(input: ProductInput): ApiResult<Product> {
     if (!cat) return { ok: false, error: 'Categoría no válida' }
   }
 
-  const data = buildProductData(input, null)
+  const data = buildProductData(input, null, productCode)
+  data.barcode = barcode
   const id = insertProduct(db, data)
 
   if (input.pendingImagePath) {
@@ -131,6 +183,11 @@ export function updateProductService(id: number, input: ProductInput): ApiResult
     return { ok: false, error: 'El código de barras ya está registrado' }
   }
 
+  const productCode = normalizeProductCode(input.productCode) ?? existing.product_code
+  if (productCode && getProductByCode(db, productCode, id)) {
+    return { ok: false, error: 'El código de producto ya está registrado' }
+  }
+
   if (input.categoryId) {
     const cat = db.prepare('SELECT id FROM categories WHERE id = ?').get(input.categoryId)
     if (!cat) return { ok: false, error: 'Categoría no válida' }
@@ -143,7 +200,8 @@ export function updateProductService(id: number, input: ProductInput): ApiResult
     return { ok: false, error: e instanceof Error ? e.message : 'Error al guardar imagen' }
   }
 
-  const data = buildProductData(input, imagePath)
+  const data = buildProductData(input, imagePath, productCode)
+  data.barcode = barcode ?? existing.barcode
   updateProduct(db, id, data)
 
   return getProductService(id)

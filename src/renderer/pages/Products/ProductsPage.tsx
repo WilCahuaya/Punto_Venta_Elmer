@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Category, Product } from '@shared/types/catalog'
 import { Badge } from '../../components/ui/Badge'
 import { Button } from '../../components/ui/Button'
@@ -6,7 +6,9 @@ import { Input } from '../../components/ui/Input'
 import { MoneyDisplay } from '../../components/ui/MoneyDisplay'
 import { Select } from '../../components/ui/Select'
 import { ProductFormModal } from '../../features/products/ProductFormModal'
+import { StockAdjustModal } from '../../features/products/StockAdjustModal'
 import { useProductImage } from '../../hooks/useProductImage'
+import { buildCategorySelectOptions } from '../../lib/category-options'
 
 function ProductThumb({ imagePath }: { imagePath: string | null }): React.JSX.Element {
   const url = useProductImage(imagePath)
@@ -31,6 +33,11 @@ export function ProductsPage(): React.JSX.Element {
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Product | null>(null)
+  const [stockProduct, setStockProduct] = useState<Product | null>(null)
+  const [scanMsg, setScanMsg] = useState<string | null>(null)
+
+  const scannerRef = useRef<HTMLInputElement>(null)
+  const [scanBuffer, setScanBuffer] = useState('')
 
   const loadCategories = useCallback(async () => {
     const result = await window.api.categories.list({ includeInactive: false })
@@ -57,6 +64,30 @@ export function ProductsPage(): React.JSX.Element {
     void loadProducts()
   }, [loadProducts])
 
+  useEffect(() => {
+    scannerRef.current?.focus()
+  }, [modalOpen, stockProduct])
+
+  async function handleScannerEnter(code: string): Promise<void> {
+    const trimmed = code.trim()
+    if (!trimmed) return
+    setScanMsg(null)
+    const res = await window.api.products.lookupBarcode(trimmed)
+    if (!res.ok) {
+      setScanMsg(res.error)
+      return
+    }
+    setStockProduct(res.data)
+  }
+
+  function handleScanKeyDown(e: React.KeyboardEvent<HTMLInputElement>): void {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      void handleScannerEnter(scanBuffer)
+      setScanBuffer('')
+    }
+  }
+
   function openCreate(): void {
     setEditing(null)
     setModalOpen(true)
@@ -74,11 +105,7 @@ export function ProductsPage(): React.JSX.Element {
     else void loadProducts()
   }
 
-  const categoryFilterOptions = categories.map((c) => ({
-    value: String(c.id),
-    label: c.name
-  }))
-
+  const categoryFilterOptions = buildCategorySelectOptions(categories)
   const lowStockCount = products.filter((p) => p.isLowStock && p.isActive).length
 
   return (
@@ -96,10 +123,27 @@ export function ProductsPage(): React.JSX.Element {
         <Button onClick={openCreate}>+ Nuevo producto</Button>
       </header>
 
+      <div className="mb-4 rounded-xl border border-brand/30 bg-brand/5 p-3">
+        <label className="mb-1 block text-xs font-medium text-[rgb(var(--text-muted))]">
+          Lector de barras — ajustar stock
+        </label>
+        <input
+          ref={scannerRef}
+          type="text"
+          value={scanBuffer}
+          onChange={(e) => setScanBuffer(e.target.value)}
+          onKeyDown={handleScanKeyDown}
+          placeholder="Escanee un producto para editar su stock"
+          autoComplete="off"
+          className="w-full rounded-lg border border-surface-border bg-surface-elevated px-3 py-2 font-mono text-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+        />
+        {scanMsg && <p className="mt-2 text-sm text-red-500">{scanMsg}</p>}
+      </div>
+
       <div className="mb-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Input
           label="Buscar"
-          placeholder="Nombre o código de barras..."
+          placeholder="Nombre, código o barras..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -166,14 +210,17 @@ export function ProductsPage(): React.JSX.Element {
                   </td>
                   <td className="px-3 py-2">
                     <div className="font-medium">{p.name}</div>
+                    {p.productCode && (
+                      <div className="text-xs text-[rgb(var(--text-muted))]">{p.productCode}</div>
+                    )}
                     {p.barcode && (
                       <div className="font-mono text-xs text-[rgb(var(--text-muted))]">
                         {p.barcode}
                       </div>
                     )}
-                    {(p.size || p.color) && (
+                    {(p.size || p.color || p.brand) && (
                       <div className="text-xs text-[rgb(var(--text-muted))]">
-                        {[p.size, p.color].filter(Boolean).join(' · ')}
+                        {[p.brand, p.size, p.color].filter(Boolean).join(' · ')}
                       </div>
                     )}
                   </td>
@@ -182,7 +229,6 @@ export function ProductsPage(): React.JSX.Element {
                     <span className={p.isLowStock ? 'font-medium text-amber-600' : ''}>
                       {p.stock}
                     </span>
-                    <span className="text-xs text-[rgb(var(--text-muted))]"> / {p.stockMin}</span>
                     {p.isLowStock && (
                       <span className="ml-1">
                         <Badge variant="warning">Bajo</Badge>
@@ -193,7 +239,11 @@ export function ProductsPage(): React.JSX.Element {
                     <MoneyDisplay amount={p.priceRetail} size="sm" />
                   </td>
                   <td className="px-3 py-2">
-                    <MoneyDisplay amount={p.priceWholesale} size="sm" />
+                    {p.priceWholesale != null ? (
+                      <MoneyDisplay amount={p.priceWholesale} size="sm" />
+                    ) : (
+                      <span className="text-[rgb(var(--text-muted))]">—</span>
+                    )}
                   </td>
                   <td className="px-3 py-2">
                     <Badge variant={p.isActive ? 'success' : 'muted'}>
@@ -202,6 +252,13 @@ export function ProductsPage(): React.JSX.Element {
                   </td>
                   <td className="px-3 py-2 text-right">
                     <div className="flex justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        type="button"
+                        onClick={() => setStockProduct(p)}
+                      >
+                        Stock
+                      </Button>
                       <Button variant="ghost" type="button" onClick={() => openEdit(p)}>
                         Editar
                       </Button>
@@ -224,6 +281,16 @@ export function ProductsPage(): React.JSX.Element {
         product={editing}
         categories={categories}
         onClose={() => setModalOpen(false)}
+        onSaved={() => void loadProducts()}
+      />
+
+      <StockAdjustModal
+        open={!!stockProduct}
+        product={stockProduct}
+        onClose={() => {
+          setStockProduct(null)
+          setScanBuffer('')
+        }}
         onSaved={() => void loadProducts()}
       />
     </div>

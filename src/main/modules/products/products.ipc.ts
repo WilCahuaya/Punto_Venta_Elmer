@@ -1,12 +1,15 @@
 import { ipcMain } from 'electron'
 import { IPC_CHANNELS } from '@shared/constants/ipc'
 import type { ProductInput, ProductListFilters } from '@shared/types/catalog'
+import type { AdjustStockInput } from '@shared/types/catalog'
 import {
+  adjustStockService,
   createProductService,
   deleteProductService,
   getProductImageUrlService,
   getProductService,
   listProductsService,
+  lookupProductByBarcodeService,
   pickProductImageService,
   updateProductService
 } from './products.service'
@@ -26,5 +29,11 @@ export function registerProductsIpc(): void {
   ipcMain.handle(IPC_CHANNELS.PRODUCTS_PICK_IMAGE, () => pickProductImageService())
   ipcMain.handle(IPC_CHANNELS.PRODUCTS_IMAGE_URL, (_e, relativePath: string | null) =>
     getProductImageUrlService(relativePath)
+  )
+  ipcMain.handle(IPC_CHANNELS.PRODUCTS_LOOKUP, (_e, barcode: string) =>
+    lookupProductByBarcodeService(barcode)
+  )
+  ipcMain.handle(IPC_CHANNELS.PRODUCTS_ADJUST_STOCK, (_e, input: AdjustStockInput) =>
+    adjustStockService(input)
   )
 }

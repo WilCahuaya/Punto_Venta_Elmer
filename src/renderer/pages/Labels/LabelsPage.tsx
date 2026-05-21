@@ -109,13 +109,16 @@ export function LabelsPage(): React.JSX.Element {
   async function assignBarcodeToProduct(): Promise<void> {
     if (!selectedProduct || !customBarcode.trim()) return
     const res = await window.api.products.update(selectedProduct.id, {
+      productCode: selectedProduct.productCode,
       name: selectedProduct.name,
       barcode: customBarcode.trim(),
       categoryId: selectedProduct.categoryId,
       stock: selectedProduct.stock,
       stockMin: selectedProduct.stockMin,
+      brand: selectedProduct.brand,
       size: selectedProduct.size,
       color: selectedProduct.color,
+      description: selectedProduct.description,
       costPrice: selectedProduct.costPrice,
       priceRetail: selectedProduct.priceRetail,
       priceWholesale: selectedProduct.priceWholesale,

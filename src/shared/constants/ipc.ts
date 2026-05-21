@@ -22,6 +22,8 @@ export const IPC_CHANNELS = {
   PRODUCTS_DELETE: 'products:delete',
   PRODUCTS_PICK_IMAGE: 'products:pickImage',
   PRODUCTS_IMAGE_URL: 'products:imageUrl',
+  PRODUCTS_LOOKUP: 'products:lookupBarcode',
+  PRODUCTS_ADJUST_STOCK: 'products:adjustStock',
   CASH_GET_CURRENT: 'cash:getCurrent',
   CASH_OPEN: 'cash:open',
   CASH_CLOSE: 'cash:close',

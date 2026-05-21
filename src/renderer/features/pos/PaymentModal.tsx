@@ -58,7 +58,7 @@ export function PaymentModal({
             Cancelar
           </Button>
           <Button type="submit" form="pay-form" disabled={saving}>
-            {saving ? 'Procesando...' : 'F12 — Confirmar venta'}
+            {saving ? 'Procesando...' : 'Confirmar venta'}
           </Button>
         </>
       }

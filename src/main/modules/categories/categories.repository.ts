@@ -3,6 +3,8 @@ import type { CategoryListFilters } from '@shared/types/catalog'
 
 export interface CategoryRow {
   id: number
+  parent_id: number | null
+  parent_name: string | null
   name: string
   description: string | null
   is_active: number
@@ -10,6 +12,7 @@ export interface CategoryRow {
   created_at: string
   updated_at: string | null
   product_count: number
+  subcategory_count: number
 }
 
 export function listCategories(db: Database.Database, filters: CategoryListFilters): CategoryRow[] {
@@ -24,18 +27,27 @@ export function listCategories(db: Database.Database, filters: CategoryListFilte
     const q = `%${filters.search.trim()}%`
     params.push(q, q)
   }
+  if (filters.parentId !== undefined) {
+    if (filters.parentId === null) {
+      conditions.push('c.parent_id IS NULL')
+    } else {
+      conditions.push('c.parent_id = ?')
+      params.push(filters.parentId)
+    }
+  }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
 
   return db
     .prepare(
-      `SELECT c.id, c.name, c.description, c.is_active, c.sort_order, c.created_at, c.updated_at,
-              COUNT(p.id) AS product_count
+      `SELECT c.id, c.parent_id, p.name AS parent_name, c.name, c.description,
+              c.is_active, c.sort_order, c.created_at, c.updated_at,
+              (SELECT COUNT(*) FROM products pr WHERE pr.category_id = c.id AND pr.is_active = 1) AS product_count,
+              (SELECT COUNT(*) FROM categories sc WHERE sc.parent_id = c.id AND sc.is_active = 1) AS subcategory_count
        FROM categories c
-       LEFT JOIN products p ON p.category_id = c.id AND p.is_active = 1
+       LEFT JOIN categories p ON p.id = c.parent_id
        ${where}
-       GROUP BY c.id
-       ORDER BY c.sort_order ASC, c.name ASC`
+       ORDER BY COALESCE(c.parent_id, c.id), c.parent_id IS NOT NULL, c.sort_order ASC, c.name ASC`
     )
     .all(...params) as CategoryRow[]
 }
@@ -43,44 +55,70 @@ export function listCategories(db: Database.Database, filters: CategoryListFilte
 export function getCategoryById(db: Database.Database, id: number): CategoryRow | undefined {
   return db
     .prepare(
-      `SELECT c.id, c.name, c.description, c.is_active, c.sort_order, c.created_at, c.updated_at,
-              (SELECT COUNT(*) FROM products p WHERE p.category_id = c.id AND p.is_active = 1) AS product_count
-       FROM categories c WHERE c.id = ?`
+      `SELECT c.id, c.parent_id, p.name AS parent_name, c.name, c.description,
+              c.is_active, c.sort_order, c.created_at, c.updated_at,
+              (SELECT COUNT(*) FROM products pr WHERE pr.category_id = c.id AND pr.is_active = 1) AS product_count,
+              (SELECT COUNT(*) FROM categories sc WHERE sc.parent_id = c.id AND sc.is_active = 1) AS subcategory_count
+       FROM categories c
+       LEFT JOIN categories p ON p.id = c.parent_id
+       WHERE c.id = ?`
     )
     .get(id) as CategoryRow | undefined
 }
 
-export function getCategoryByName(db: Database.Database, name: string, excludeId?: number): CategoryRow | undefined {
+export function getCategoryByNameAndParent(
+  db: Database.Database,
+  name: string,
+  parentId: number | null,
+  excludeId?: number
+): { id: number } | undefined {
+  const parentKey = parentId ?? 0
   if (excludeId) {
     return db
-      .prepare('SELECT id, name FROM categories WHERE name = ? AND id != ?')
-      .get(name, excludeId) as CategoryRow | undefined
+      .prepare(
+        'SELECT id FROM categories WHERE name = ? AND COALESCE(parent_id, 0) = ? AND id != ?'
+      )
+      .get(name, parentKey, excludeId) as { id: number } | undefined
   }
-  return db.prepare('SELECT id, name FROM categories WHERE name = ?').get(name) as CategoryRow | undefined
+  return db
+    .prepare('SELECT id FROM categories WHERE name = ? AND COALESCE(parent_id, 0) = ?')
+    .get(name, parentKey) as { id: number } | undefined
 }
 
 export function insertCategory(
   db: Database.Database,
-  data: { name: string; description: string | null; sortOrder: number; isActive: number }
+  data: {
+    parentId: number | null
+    name: string
+    description: string | null
+    sortOrder: number
+    isActive: number
+  }
 ): number {
   const result = db
     .prepare(
-      `INSERT INTO categories (name, description, sort_order, is_active)
-       VALUES (?, ?, ?, ?)`
+      `INSERT INTO categories (parent_id, name, description, sort_order, is_active)
+       VALUES (?, ?, ?, ?, ?)`
     )
-    .run(data.name, data.description, data.sortOrder, data.isActive)
+    .run(data.parentId, data.name, data.description, data.sortOrder, data.isActive)
   return Number(result.lastInsertRowid)
 }
 
 export function updateCategory(
   db: Database.Database,
   id: number,
-  data: { name: string; description: string | null; sortOrder: number; isActive: number }
+  data: {
+    parentId: number | null
+    name: string
+    description: string | null
+    sortOrder: number
+    isActive: number
+  }
 ): void {
   db.prepare(
-    `UPDATE categories SET name = ?, description = ?, sort_order = ?, is_active = ?, updated_at = datetime('now')
+    `UPDATE categories SET parent_id = ?, name = ?, description = ?, sort_order = ?, is_active = ?, updated_at = datetime('now')
      WHERE id = ?`
-  ).run(data.name, data.description, data.sortOrder, data.isActive, id)
+  ).run(data.parentId, data.name, data.description, data.sortOrder, data.isActive, id)
 }
 
 export function softDeleteCategory(db: Database.Database, id: number): void {
@@ -94,4 +132,15 @@ export function countProductsInCategory(db: Database.Database, categoryId: numbe
     .prepare('SELECT COUNT(*) AS c FROM products WHERE category_id = ? AND is_active = 1')
     .get(categoryId) as { c: number }
   return row.c
+}
+
+export function countActiveSubcategories(db: Database.Database, parentId: number): number {
+  const row = db
+    .prepare('SELECT COUNT(*) AS c FROM categories WHERE parent_id = ? AND is_active = 1')
+    .get(parentId) as { c: number }
+  return row.c
+}
+
+export function listParentCategories(db: Database.Database): CategoryRow[] {
+  return listCategories(db, { includeInactive: false, parentId: null })
 }

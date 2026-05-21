@@ -1,6 +1,6 @@
 import type { Product } from './catalog'
 
-export type PriceMode = 'retail' | 'wholesale'
+export type PriceMode = 'retail' | 'wholesale' | 'custom'
 
 export interface PosProduct {
   id: number
@@ -10,10 +10,9 @@ export interface PosProduct {
   stock: number
   size: string | null
   color: string | null
-  unitPrice: number
   costPrice: number
   priceRetail: number
-  priceWholesale: number
+  priceWholesale: number | null
   imagePath: string | null
 }
 
@@ -27,6 +26,7 @@ export interface CartLine {
   costPrice: number
   maxStock: number
   lineTotal: number
+  priceLabel: string
 }
 
 export interface SaleItemInput {
@@ -37,7 +37,7 @@ export interface SaleItemInput {
 
 export interface CreateSaleInput {
   items: SaleItemInput[]
-  priceMode: PriceMode
+  priceMode?: PriceMode
   amountPaid: number
   discount?: number
 }
@@ -66,7 +66,7 @@ export interface Sale {
   createdAt: string
 }
 
-export function productToPosProduct(product: Product, priceMode: PriceMode): PosProduct {
+export function productToPosProduct(product: Product): PosProduct {
   return {
     id: product.id,
     name: product.name,
@@ -75,7 +75,6 @@ export function productToPosProduct(product: Product, priceMode: PriceMode): Pos
     stock: product.stock,
     size: product.size,
     color: product.color,
-    unitPrice: priceMode === 'wholesale' ? product.priceWholesale : product.priceRetail,
     costPrice: product.costPrice,
     priceRetail: product.priceRetail,
     priceWholesale: product.priceWholesale,

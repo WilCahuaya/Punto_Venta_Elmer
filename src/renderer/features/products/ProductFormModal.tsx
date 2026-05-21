@@ -1,12 +1,12 @@
 import { FormEvent, useEffect, useState } from 'react'
-import type { Category } from '@shared/types/catalog'
-import type { Product, ProductInput } from '@shared/types/catalog'
+import type { Category, Product, ProductInput } from '@shared/types/catalog'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { Modal } from '../../components/ui/Modal'
 import { MoneyInput } from '../../components/ui/MoneyInput'
 import { Select } from '../../components/ui/Select'
 import { useProductImage } from '../../hooks/useProductImage'
+import { buildCategorySelectOptions } from '../../lib/category-options'
 
 interface ProductFormModalProps {
   open: boolean
@@ -23,13 +23,32 @@ function defaultForm(): ProductInput {
     categoryId: null,
     stock: 0,
     stockMin: 0,
+    brand: '',
     size: '',
     color: '',
+    description: '',
     costPrice: 0,
     priceRetail: 0,
-    priceWholesale: 0,
+    priceWholesale: null,
     isActive: true
   }
+}
+
+function FormSection({
+  title,
+  children
+}: {
+  title: string
+  children: React.ReactNode
+}): React.JSX.Element {
+  return (
+    <section className="rounded-xl border border-surface-border p-4">
+      <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-[rgb(var(--text-muted))]">
+        {title}
+      </h3>
+      <div className="space-y-4">{children}</div>
+    </section>
+  )
 }
 
 export function ProductFormModal({
@@ -45,6 +64,7 @@ export function ProductFormModal({
   const [pendingImagePath, setPendingImagePath] = useState<string | null>(null)
   const [previewLocalUrl, setPreviewLocalUrl] = useState<string | null>(null)
   const [removeImage, setRemoveImage] = useState(false)
+  const [barcodeAuto, setBarcodeAuto] = useState(false)
 
   const storedImageUrl = useProductImage(product?.imagePath)
 
@@ -52,20 +72,30 @@ export function ProductFormModal({
     if (!open) return
     if (product) {
       setForm({
+        productCode: product.productCode ?? '',
         name: product.name,
         barcode: product.barcode ?? '',
         categoryId: product.categoryId,
         stock: product.stock,
         stockMin: product.stockMin,
+        brand: product.brand ?? '',
         size: product.size ?? '',
         color: product.color ?? '',
+        description: product.description ?? '',
         costPrice: product.costPrice,
         priceRetail: product.priceRetail,
         priceWholesale: product.priceWholesale,
         isActive: product.isActive
       })
+      setBarcodeAuto(false)
     } else {
       setForm(defaultForm())
+      setBarcodeAuto(true)
+      void window.api.labels.generateBarcode().then((res) => {
+        if (res.ok) {
+          setForm((f) => ({ ...f, barcode: res.data.barcode }))
+        }
+      })
     }
     setPendingImagePath(null)
     setPreviewLocalUrl(null)
@@ -81,9 +111,7 @@ export function ProductFormModal({
     setPreviewLocalUrl(`pos-media://img/${encodeURIComponent(result.data)}`)
   }
 
-  const displayImage = removeImage
-    ? null
-    : previewLocalUrl ?? storedImageUrl
+  const displayImage = removeImage ? null : previewLocalUrl ?? storedImageUrl
 
   async function handleSubmit(e: FormEvent): Promise<void> {
     e.preventDefault()
@@ -92,12 +120,18 @@ export function ProductFormModal({
 
     const payload: ProductInput = {
       ...form,
-      barcode: form.barcode || null,
+      productCode: form.productCode?.trim() || null,
+      barcode: form.barcode?.trim() || null,
       categoryId: form.categoryId ? Number(form.categoryId) : null,
+      brand: form.brand || null,
       size: form.size || null,
       color: form.color || null,
+      description: form.description || null,
+      priceWholesale:
+        form.priceWholesale != null && form.priceWholesale > 0 ? form.priceWholesale : null,
       pendingImagePath,
-      removeImage
+      removeImage,
+      skipAutoBarcode: !barcodeAuto && !!form.barcode?.trim()
     }
 
     const result = product
@@ -113,9 +147,7 @@ export function ProductFormModal({
     onClose()
   }
 
-  const categoryOptions = categories
-    .filter((c) => c.isActive)
-    .map((c) => ({ value: String(c.id), label: c.name }))
+  const categoryOptions = buildCategorySelectOptions(categories)
 
   return (
     <Modal
@@ -134,125 +166,143 @@ export function ProductFormModal({
         </>
       }
     >
-      <form id="product-form" onSubmit={(e) => void handleSubmit(e)}>
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-4">
+      <form id="product-form" onSubmit={(e) => void handleSubmit(e)} className="space-y-6">
+        <FormSection title="Información básica">
+          <div className="grid gap-4 md:grid-cols-2">
             <Input
-              label="Nombre"
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              required
-              autoFocus
+              label="Código"
+              value={form.productCode ?? ''}
+              onChange={(e) => setForm({ ...form, productCode: e.target.value })}
+              placeholder="Se genera automáticamente si está vacío"
             />
-            <Input
-              label="Código de barras"
-              value={form.barcode ?? ''}
-              onChange={(e) => setForm({ ...form, barcode: e.target.value })}
-            />
-            <Select
-              label="Categoría"
-              value={form.categoryId ? String(form.categoryId) : ''}
-              onChange={(v) =>
-                setForm({ ...form, categoryId: v ? Number(v) : null })
-              }
-              options={categoryOptions}
-              placeholder="Sin categoría"
-            />
-            <div className="grid grid-cols-2 gap-3">
+            <div>
               <Input
-                label="Talla"
-                value={form.size ?? ''}
-                onChange={(e) => setForm({ ...form, size: e.target.value })}
+                label="Código de barras"
+                value={form.barcode ?? ''}
+                onChange={(e) => {
+                  setBarcodeAuto(false)
+                  setForm({ ...form, barcode: e.target.value })
+                }}
               />
-              <Input
-                label="Color"
-                value={form.color ?? ''}
-                onChange={(e) => setForm({ ...form, color: e.target.value })}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Input
-                label="Stock"
-                type="number"
-                min={0}
-                step="any"
-                value={String(form.stock ?? 0)}
-                onChange={(e) => setForm({ ...form, stock: Number(e.target.value) })}
-              />
-              <Input
-                label="Stock mínimo"
-                type="number"
-                min={0}
-                step="any"
-                value={String(form.stockMin ?? 0)}
-                onChange={(e) => setForm({ ...form, stockMin: Number(e.target.value) })}
-              />
+              {!product && barcodeAuto && (
+                <p className="mt-1 text-xs text-[rgb(var(--text-muted))]">
+                  Generado automáticamente al crear
+                </p>
+              )}
             </div>
           </div>
+          <Input
+            label="Nombre del producto"
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            required
+            autoFocus
+          />
+          <Select
+            label="Categoría"
+            value={form.categoryId ? String(form.categoryId) : ''}
+            onChange={(v) => setForm({ ...form, categoryId: v ? Number(v) : null })}
+            options={categoryOptions}
+            placeholder="Sin categoría"
+          />
+        </FormSection>
 
-          <div className="space-y-4">
+        <FormSection title="Venta">
+          <div className="grid gap-4 md:grid-cols-3">
             <MoneyInput
-              label="Precio compra"
-              value={form.costPrice ?? 0}
-              onChange={(v) => setForm({ ...form, costPrice: v })}
-            />
-            <MoneyInput
-              label="Precio menor"
+              label="Precio normal"
               value={form.priceRetail}
               onChange={(v) => setForm({ ...form, priceRetail: v })}
               required
             />
             <MoneyInput
-              label="Precio mayor"
-              value={form.priceWholesale}
-              onChange={(v) => setForm({ ...form, priceWholesale: v })}
-              required
+              label="Precio por mayor (opcional)"
+              value={form.priceWholesale ?? 0}
+              onChange={(v) =>
+                setForm({ ...form, priceWholesale: v > 0 ? v : null })
+              }
             />
-
-            <div>
-              <p className="mb-2 text-sm font-medium">Imagen</p>
-              <div className="flex h-36 items-center justify-center rounded-lg border border-dashed border-surface-border bg-surface/50">
-                {displayImage ? (
-                  <img
-                    src={displayImage}
-                    alt=""
-                    className="max-h-full max-w-full object-contain"
-                  />
-                ) : (
-                  <span className="text-xs text-[rgb(var(--text-muted))]">Sin imagen</span>
-                )}
-              </div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <Button type="button" variant="secondary" onClick={() => void handlePickImage()}>
-                  Elegir imagen
-                </Button>
-                {(displayImage || product?.imagePath) && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => {
-                      setRemoveImage(true)
-                      setPendingImagePath(null)
-                      setPreviewLocalUrl(null)
-                    }}
-                  >
-                    Quitar
-                  </Button>
-                )}
-              </div>
-            </div>
-
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={form.isActive !== false}
-                onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
-              />
-              Activo
-            </label>
+            <Input
+              label="Stock"
+              type="number"
+              min={0}
+              step="any"
+              value={String(form.stock ?? 0)}
+              onChange={(e) => setForm({ ...form, stock: Number(e.target.value) })}
+            />
           </div>
-        </div>
-        {error && <p className="mt-4 text-sm text-red-500">{error}</p>}
+        </FormSection>
+
+        <FormSection title="Detalles opcionales">
+          <div className="grid gap-4 md:grid-cols-3">
+            <Input
+              label="Marca"
+              value={form.brand ?? ''}
+              onChange={(e) => setForm({ ...form, brand: e.target.value })}
+            />
+            <Input
+              label="Color"
+              value={form.color ?? ''}
+              onChange={(e) => setForm({ ...form, color: e.target.value })}
+            />
+            <Input
+              label="Modelo / Tamaño"
+              value={form.size ?? ''}
+              onChange={(e) => setForm({ ...form, size: e.target.value })}
+            />
+          </div>
+          <label className="flex flex-col gap-2">
+            <span className="text-sm font-medium">Descripción</span>
+            <textarea
+              value={form.description ?? ''}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              rows={3}
+              className="rounded-lg border border-surface-border bg-surface-elevated px-3 py-2 text-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            />
+          </label>
+          <div>
+            <p className="mb-2 text-sm font-medium">Imagen del producto</p>
+            <div className="flex h-36 items-center justify-center rounded-lg border border-dashed border-surface-border bg-surface/50">
+              {displayImage ? (
+                <img
+                  src={displayImage}
+                  alt=""
+                  className="max-h-full max-w-full object-contain"
+                />
+              ) : (
+                <span className="text-xs text-[rgb(var(--text-muted))]">Sin imagen</span>
+              )}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Button type="button" variant="secondary" onClick={() => void handlePickImage()}>
+                Elegir imagen
+              </Button>
+              {(displayImage || product?.imagePath) && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    setRemoveImage(true)
+                    setPendingImagePath(null)
+                    setPreviewLocalUrl(null)
+                  }}
+                >
+                  Quitar
+                </Button>
+              )}
+            </div>
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={form.isActive !== false}
+              onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
+            />
+            Activo
+          </label>
+        </FormSection>
+
+        {error && <p className="text-sm text-red-500">{error}</p>}
       </form>
     </Modal>
   )

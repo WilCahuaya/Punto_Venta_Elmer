@@ -10,8 +10,14 @@ import type {
   CloseCashInput,
   OpenCashInput
 } from '@shared/types/cash'
-import type { CreateSaleInput, PriceMode } from '@shared/types/sales'
-import type { CategoryInput, CategoryListFilters, ProductInput, ProductListFilters } from '@shared/types/catalog'
+import type { CreateSaleInput } from '@shared/types/sales'
+import type {
+  AdjustStockInput,
+  CategoryInput,
+  CategoryListFilters,
+  ProductInput,
+  ProductListFilters
+} from '@shared/types/catalog'
 
 const api = {
   auth: {
@@ -49,7 +55,11 @@ const api = {
     delete: (id: number) => ipcRenderer.invoke(IPC_CHANNELS.PRODUCTS_DELETE, id),
     pickImage: () => ipcRenderer.invoke(IPC_CHANNELS.PRODUCTS_PICK_IMAGE),
     imageUrl: (relativePath: string | null) =>
-      ipcRenderer.invoke(IPC_CHANNELS.PRODUCTS_IMAGE_URL, relativePath)
+      ipcRenderer.invoke(IPC_CHANNELS.PRODUCTS_IMAGE_URL, relativePath),
+    lookupBarcode: (barcode: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.PRODUCTS_LOOKUP, barcode),
+    adjustStock: (input: AdjustStockInput) =>
+      ipcRenderer.invoke(IPC_CHANNELS.PRODUCTS_ADJUST_STOCK, input)
   },
   cash: {
     getCurrent: () => ipcRenderer.invoke(IPC_CHANNELS.CASH_GET_CURRENT),
@@ -67,8 +77,8 @@ const api = {
     create: (input: CreateSaleInput) => ipcRenderer.invoke(IPC_CHANNELS.SALES_CREATE, input),
     printTicket: (saleId: number) => ipcRenderer.invoke(IPC_CHANNELS.SALES_PRINT_TICKET, saleId),
     void: (input: VoidSaleInput) => ipcRenderer.invoke(IPC_CHANNELS.SALES_VOID, input),
-    lookupBarcode: (barcode: string, priceMode: PriceMode) =>
-      ipcRenderer.invoke(IPC_CHANNELS.PRODUCTS_LOOKUP_BARCODE, barcode, priceMode),
+    lookupBarcode: (barcode: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.PRODUCTS_LOOKUP_BARCODE, barcode),
     searchProducts: (query: string) => ipcRenderer.invoke(IPC_CHANNELS.PRODUCTS_SEARCH_POS, query)
   },
   dashboard: {

@@ -3,14 +3,17 @@ import type { ProductListFilters } from '@shared/types/catalog'
 
 export interface ProductRow {
   id: number
+  product_code: string | null
   name: string
   barcode: string | null
   category_id: number | null
   category_name: string | null
   stock: number
   stock_min: number
+  brand: string | null
   size: string | null
   color: string | null
+  description: string | null
   cost_price: string
   price_retail: string
   price_wholesale: string
@@ -21,8 +24,8 @@ export interface ProductRow {
 }
 
 const SELECT_FIELDS = `
-  p.id, p.name, p.barcode, p.category_id, c.name AS category_name,
-  p.stock, p.stock_min, p.size, p.color,
+  p.id, p.product_code, p.name, p.barcode, p.category_id, c.name AS category_name,
+  p.stock, p.stock_min, p.brand, p.size, p.color, p.description,
   p.cost_price, p.price_retail, p.price_wholesale,
   p.image_path, p.is_active, p.created_at, p.updated_at
 `
@@ -35,9 +38,9 @@ export function listProducts(db: Database.Database, filters: ProductListFilters)
     conditions.push('p.is_active = 1')
   }
   if (filters.search?.trim()) {
-    conditions.push('(p.name LIKE ? OR p.barcode LIKE ?)')
+    conditions.push('(p.name LIKE ? OR p.barcode LIKE ? OR p.product_code LIKE ?)')
     const q = `%${filters.search.trim()}%`
-    params.push(q, q)
+    params.push(q, q, q)
   }
   if (filters.categoryId) {
     conditions.push('p.category_id = ?')
@@ -89,11 +92,11 @@ export function searchProductsPos(db: Database.Database, query: string, limit = 
       `SELECT ${SELECT_FIELDS}
        FROM products p
        LEFT JOIN categories c ON c.id = p.category_id
-       WHERE p.is_active = 1 AND (p.name LIKE ? OR p.barcode LIKE ?)
+       WHERE p.is_active = 1 AND (p.name LIKE ? OR p.barcode LIKE ? OR p.product_code LIKE ?)
        ORDER BY p.name ASC
        LIMIT ?`
     )
-    .all(q, q, limit) as ProductRow[]
+    .all(q, q, q, limit) as ProductRow[]
 }
 
 export function getProductByBarcode(
@@ -111,16 +114,34 @@ export function getProductByBarcode(
     | undefined
 }
 
+export function getProductByCode(
+  db: Database.Database,
+  productCode: string,
+  excludeId?: number
+): { id: number } | undefined {
+  if (excludeId) {
+    return db
+      .prepare('SELECT id FROM products WHERE product_code = ? AND id != ?')
+      .get(productCode, excludeId) as { id: number } | undefined
+  }
+  return db.prepare('SELECT id FROM products WHERE product_code = ?').get(productCode) as
+    | { id: number }
+    | undefined
+}
+
 export function insertProduct(
   db: Database.Database,
   data: {
+    productCode: string | null
     name: string
     barcode: string | null
     categoryId: number | null
     stock: number
     stockMin: number
+    brand: string | null
     size: string | null
     color: string | null
+    description: string | null
     costPrice: string
     priceRetail: string
     priceWholesale: string
@@ -131,18 +152,21 @@ export function insertProduct(
   const result = db
     .prepare(
       `INSERT INTO products (
-        name, barcode, category_id, stock, stock_min, size, color,
+        product_code, name, barcode, category_id, stock, stock_min, brand, size, color, description,
         cost_price, price_retail, price_wholesale, image_path, is_active
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
+      data.productCode,
       data.name,
       data.barcode,
       data.categoryId,
       data.stock,
       data.stockMin,
+      data.brand,
       data.size,
       data.color,
+      data.description,
       data.costPrice,
       data.priceRetail,
       data.priceWholesale,
@@ -156,13 +180,16 @@ export function updateProduct(
   db: Database.Database,
   id: number,
   data: {
+    productCode: string | null
     name: string
     barcode: string | null
     categoryId: number | null
     stock: number
     stockMin: number
+    brand: string | null
     size: string | null
     color: string | null
+    description: string | null
     costPrice: string
     priceRetail: string
     priceWholesale: string
@@ -172,18 +199,22 @@ export function updateProduct(
 ): void {
   db.prepare(
     `UPDATE products SET
-      name = ?, barcode = ?, category_id = ?, stock = ?, stock_min = ?,
-      size = ?, color = ?, cost_price = ?, price_retail = ?, price_wholesale = ?,
+      product_code = ?, name = ?, barcode = ?, category_id = ?, stock = ?, stock_min = ?,
+      brand = ?, size = ?, color = ?, description = ?,
+      cost_price = ?, price_retail = ?, price_wholesale = ?,
       image_path = ?, is_active = ?, updated_at = datetime('now')
      WHERE id = ?`
   ).run(
+    data.productCode,
     data.name,
     data.barcode,
     data.categoryId,
     data.stock,
     data.stockMin,
+    data.brand,
     data.size,
     data.color,
+    data.description,
     data.costPrice,
     data.priceRetail,
     data.priceWholesale,
@@ -191,6 +222,10 @@ export function updateProduct(
     data.isActive,
     id
   )
+}
+
+export function updateProductStock(db: Database.Database, id: number, stock: number): void {
+  db.prepare(`UPDATE products SET stock = ?, updated_at = datetime('now') WHERE id = ?`).run(stock, id)
 }
 
 export function updateProductImagePath(db: Database.Database, id: number, imagePath: string | null): void {

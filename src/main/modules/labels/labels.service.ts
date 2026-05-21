@@ -10,7 +10,8 @@ import type {
 } from '@shared/types/labels'
 import { formatMoney } from '@shared/lib/currency'
 import { getDatabase } from '../../database/connection'
-import { barcodeExists, generateCandidateBarcode } from './labels.repository'
+import { generateCandidateBarcode } from '../../utils/barcode'
+import { barcodeExists } from './labels.repository'
 
 function getSetting(key: string, fallback = ''): string {
   const db = getDatabase()
@@ -26,7 +27,7 @@ export function generateBarcodeService(): ApiResult<GeneratedBarcode> {
   let unique = false
 
   for (let i = 0; i < 50; i++) {
-    const candidate = generateCandidateBarcode()
+    const candidate = generateCandidateBarcode(db)
     if (!barcodeExists(db, candidate)) {
       barcode = candidate
       unique = true

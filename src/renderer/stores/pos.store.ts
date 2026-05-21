@@ -1,14 +1,22 @@
 import { create } from 'zustand'
-import type { CartLine, PosProduct, PriceMode } from '@shared/types/sales'
+import type { CartLine } from '@shared/types/sales'
 import { roundMoney } from '@shared/lib/currency'
 
 interface PosState {
-  priceMode: PriceMode
   lines: CartLine[]
   discount: number
-  setPriceMode: (mode: PriceMode) => void
-  togglePriceMode: () => void
-  addProduct: (product: PosProduct, quantity: number) => void
+  addProduct: (
+    product: {
+      id: number
+      name: string
+      barcode: string | null
+      stock: number
+      costPrice: number
+    },
+    quantity: number,
+    unitPrice: number,
+    priceLabel: string
+  ) => void
   updateQuantity: (key: string, quantity: number) => void
   removeLine: (key: string) => void
   clearCart: () => void
@@ -23,21 +31,12 @@ function lineKey(productId: number, unitPrice: number): string {
 }
 
 export const usePosStore = create<PosState>((set, get) => ({
-  priceMode: 'retail',
   lines: [],
   discount: 0,
 
-  setPriceMode: (mode) => set({ priceMode: mode }),
-
-  togglePriceMode: () =>
-    set((s) => ({
-      priceMode: s.priceMode === 'retail' ? 'wholesale' : 'retail',
-      lines: []
-    })),
-
-  addProduct: (product, quantity) => {
-    const unitPrice = roundMoney(product.unitPrice)
-    const key = lineKey(product.id, unitPrice)
+  addProduct: (product, quantity, unitPrice, priceLabel) => {
+    const price = roundMoney(unitPrice)
+    const key = lineKey(product.id, price)
     set((s) => {
       const existing = s.lines.find((l) => l.key === key)
       if (existing) {
@@ -49,7 +48,7 @@ export const usePosStore = create<PosState>((set, get) => ({
               ? {
                   ...l,
                   quantity: newQty,
-                  lineTotal: roundMoney(newQty * unitPrice)
+                  lineTotal: roundMoney(newQty * price)
                 }
               : l
           )
@@ -65,10 +64,11 @@ export const usePosStore = create<PosState>((set, get) => ({
             name: product.name,
             barcode: product.barcode,
             quantity,
-            unitPrice,
+            unitPrice: price,
             costPrice: product.costPrice,
             maxStock: product.stock,
-            lineTotal: roundMoney(quantity * unitPrice)
+            lineTotal: roundMoney(quantity * price),
+            priceLabel
           }
         ]
       }

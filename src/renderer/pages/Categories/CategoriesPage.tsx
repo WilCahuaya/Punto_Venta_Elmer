@@ -38,11 +38,14 @@ export function CategoriesPage(): React.JSX.Element {
   }
 
   async function handleDelete(cat: Category): Promise<void> {
-    if (!confirm(`¿Desactivar la categoría "${cat.name}"?`)) return
+    if (!confirm(`¿Desactivar "${cat.name}"?`)) return
     const result = await window.api.categories.delete(cat.id)
     if (!result.ok) alert(result.error)
     else void load()
   }
+
+  const mainCount = items.filter((c) => !c.parentId).length
+  const subCount = items.filter((c) => c.parentId).length
 
   return (
     <div>
@@ -50,7 +53,7 @@ export function CategoriesPage(): React.JSX.Element {
         <div>
           <h2 className="text-2xl font-semibold">Categorías</h2>
           <p className="text-sm text-[rgb(var(--text-muted))]">
-            {items.length} categoría(s)
+            {mainCount} categoría(s) · {subCount} subcategoría(s)
           </p>
         </div>
         <Button onClick={openCreate}>+ Nueva categoría</Button>
@@ -80,8 +83,9 @@ export function CategoriesPage(): React.JSX.Element {
           <thead className="border-b border-surface-border bg-surface-elevated">
             <tr>
               <th className="px-4 py-3 font-medium">Nombre</th>
+              <th className="px-4 py-3 font-medium">Tipo</th>
               <th className="px-4 py-3 font-medium">Productos</th>
-              <th className="px-4 py-3 font-medium">Orden</th>
+              <th className="px-4 py-3 font-medium">Subcat.</th>
               <th className="px-4 py-3 font-medium">Estado</th>
               <th className="px-4 py-3 font-medium text-right">Acciones</th>
             </tr>
@@ -89,13 +93,13 @@ export function CategoriesPage(): React.JSX.Element {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-[rgb(var(--text-muted))]">
+                <td colSpan={6} className="px-4 py-8 text-center text-[rgb(var(--text-muted))]">
                   Cargando...
                 </td>
               </tr>
             ) : items.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-[rgb(var(--text-muted))]">
+                <td colSpan={6} className="px-4 py-8 text-center text-[rgb(var(--text-muted))]">
                   Sin categorías
                 </td>
               </tr>
@@ -106,13 +110,28 @@ export function CategoriesPage(): React.JSX.Element {
                   className="border-b border-surface-border/60 hover:bg-surface-elevated/50"
                 >
                   <td className="px-4 py-3">
-                    <div className="font-medium">{cat.name}</div>
+                    <div className={`font-medium ${cat.parentId ? 'pl-4' : ''}`}>
+                      {cat.parentId && (
+                        <span className="mr-1 text-[rgb(var(--text-muted))]">↳</span>
+                      )}
+                      {cat.name}
+                    </div>
                     {cat.description && (
                       <div className="text-xs text-[rgb(var(--text-muted))]">{cat.description}</div>
                     )}
+                    {cat.parentName && (
+                      <div className="text-xs text-brand">Dentro de: {cat.parentName}</div>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <Badge variant={cat.parentId ? 'default' : 'success'}>
+                      {cat.parentId ? 'Subcategoría' : 'Principal'}
+                    </Badge>
                   </td>
                   <td className="px-4 py-3 tabular-nums">{cat.productCount}</td>
-                  <td className="px-4 py-3 tabular-nums">{cat.sortOrder}</td>
+                  <td className="px-4 py-3 tabular-nums">
+                    {cat.parentId ? '—' : cat.subcategoryCount}
+                  </td>
                   <td className="px-4 py-3">
                     <Badge variant={cat.isActive ? 'success' : 'muted'}>
                       {cat.isActive ? 'Activa' : 'Inactiva'}
@@ -140,6 +159,7 @@ export function CategoriesPage(): React.JSX.Element {
       <CategoryFormModal
         open={modalOpen}
         category={editing}
+        allCategories={items}
         onClose={() => setModalOpen(false)}
         onSaved={() => void load()}
       />

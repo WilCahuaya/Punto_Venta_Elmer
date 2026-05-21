@@ -2,7 +2,8 @@ import { ipcMain } from 'electron'
 import { IPC_CHANNELS } from '@shared/constants/ipc'
 import type { CreateSaleInput } from '@shared/types/sales'
 import { printSaleTicket } from '../../services/printer.service'
-import { createSaleService, lookupBarcodeForPos } from './sales.service'
+import { createSaleService, lookupBarcodeForPos, voidSaleService } from './sales.service'
+import type { VoidSaleInput } from '@shared/types/reports'
 import { searchProductsPosService } from '../products/products.service'
 import type { PriceMode } from '@shared/types/sales'
 
@@ -21,5 +22,8 @@ export function registerSalesIpc(): void {
   )
   ipcMain.handle(IPC_CHANNELS.PRODUCTS_SEARCH_POS, (_e, query: string) =>
     searchProductsPosService(query)
+  )
+  ipcMain.handle(IPC_CHANNELS.SALES_VOID, (_e, input: VoidSaleInput) =>
+    voidSaleService(input.saleId, input.reason)
   )
 }

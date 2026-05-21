@@ -36,5 +36,9 @@ export const IPC_CHANNELS = {
   DASHBOARD_STATS: 'dashboard:stats',
   LABELS_GENERATE_BARCODE: 'labels:generateBarcode',
   LABELS_CHECK_BARCODE: 'labels:checkBarcode',
-  LABELS_PRINT: 'labels:print'
+  LABELS_PRINT: 'labels:print',
+  REPORTS_SUMMARY: 'reports:summary',
+  REPORTS_EXPORT_PDF: 'reports:exportPdf',
+  REPORTS_EXPORT_EXCEL: 'reports:exportExcel',
+  SALES_VOID: 'sales:void'
 } as const

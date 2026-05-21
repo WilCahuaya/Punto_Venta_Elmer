@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { IPC_CHANNELS } from '@shared/constants/ipc'
 import type { LoginPayload } from '@shared/types/api'
 import type { LabelPrintPayload } from '@shared/types/labels'
+import type { ReportDateRange, VoidSaleInput } from '@shared/types/reports'
 import type { SettingsUpdateInput } from '@shared/types/settings'
 import type {
   CashHistoryFilters,
@@ -65,6 +66,7 @@ const api = {
   sales: {
     create: (input: CreateSaleInput) => ipcRenderer.invoke(IPC_CHANNELS.SALES_CREATE, input),
     printTicket: (saleId: number) => ipcRenderer.invoke(IPC_CHANNELS.SALES_PRINT_TICKET, saleId),
+    void: (input: VoidSaleInput) => ipcRenderer.invoke(IPC_CHANNELS.SALES_VOID, input),
     lookupBarcode: (barcode: string, priceMode: PriceMode) =>
       ipcRenderer.invoke(IPC_CHANNELS.PRODUCTS_LOOKUP_BARCODE, barcode, priceMode),
     searchProducts: (query: string) => ipcRenderer.invoke(IPC_CHANNELS.PRODUCTS_SEARCH_POS, query)
@@ -76,6 +78,14 @@ const api = {
     generateBarcode: () => ipcRenderer.invoke(IPC_CHANNELS.LABELS_GENERATE_BARCODE),
     checkBarcode: (barcode: string) => ipcRenderer.invoke(IPC_CHANNELS.LABELS_CHECK_BARCODE, barcode),
     print: (payload: LabelPrintPayload) => ipcRenderer.invoke(IPC_CHANNELS.LABELS_PRINT, payload)
+  },
+  reports: {
+    getSummary: (range: ReportDateRange) =>
+      ipcRenderer.invoke(IPC_CHANNELS.REPORTS_SUMMARY, range),
+    exportPdf: (range: ReportDateRange) =>
+      ipcRenderer.invoke(IPC_CHANNELS.REPORTS_EXPORT_PDF, range),
+    exportExcel: (range: ReportDateRange) =>
+      ipcRenderer.invoke(IPC_CHANNELS.REPORTS_EXPORT_EXCEL, range)
   }
 }
 

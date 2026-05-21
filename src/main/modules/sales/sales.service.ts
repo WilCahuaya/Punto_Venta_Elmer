@@ -14,8 +14,10 @@ import {
   getSaleItems,
   insertSale,
   insertSaleItem,
+  restoreStock,
+  voidSaleRecord,
   type SaleItemRow,
-  type SaleRow
+  type SaleRowFull
 } from './sales.repository'
 
 function mapSaleItem(row: SaleItemRow): SaleItem {
@@ -30,7 +32,7 @@ function mapSaleItem(row: SaleItemRow): SaleItem {
   }
 }
 
-function mapSale(row: SaleRow, items: SaleItemRow[]): Sale {
+function mapSale(row: SaleRowFull, items: SaleItemRow[]): Sale {
   return {
     id: row.id,
     ticketNumber: row.ticket_number,
@@ -150,6 +152,32 @@ export function getSaleService(id: number): ApiResult<Sale> {
   if (!row) return { ok: false, error: 'Venta no encontrada' }
   const items = getSaleItems(db, id)
   return { ok: true, data: mapSale(row, items) }
+}
+
+export function voidSaleService(saleId: number, reason: string): ApiResult<Sale> {
+  if (!reason?.trim()) return { ok: false, error: 'El motivo de anulación es obligatorio' }
+
+  const db = getDatabase()
+  const sale = getSaleById(db, saleId)
+  if (!sale) return { ok: false, error: 'Venta no encontrada' }
+  if (sale.status !== 'completed') {
+    return { ok: false, error: 'Solo se pueden anular ventas completadas' }
+  }
+
+  try {
+    db.transaction(() => {
+      const items = getSaleItems(db, saleId)
+      for (const item of items) {
+        restoreStock(db, item.product_id, item.quantity)
+      }
+      voidSaleRecord(db, saleId, reason.trim())
+      const after = getSaleById(db, saleId)
+      if (!after || after.status !== 'voided') throw new Error('No se pudo anular la venta')
+    })()
+    return getSaleService(saleId)
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Error al anular venta' }
+  }
 }
 
 export function lookupBarcodeForPos(barcode: string, priceMode: PriceMode): ApiResult<ReturnType<typeof mapProductRow>> {

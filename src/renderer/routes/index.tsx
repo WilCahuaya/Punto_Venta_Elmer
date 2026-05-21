@@ -9,6 +9,7 @@ import { CashPage } from '../pages/Cash/CashPage'
 import { PosPage } from '../pages/Pos/PosPage'
 import { SettingsPage } from '../pages/Settings/SettingsPage'
 import { LabelsPage } from '../pages/Labels/LabelsPage'
+import { ReportsPage } from '../pages/Reports/ReportsPage'
 import { PlaceholderPage } from '../pages/Placeholder/PlaceholderPage'
 import { useAuthStore } from '../stores/auth.store'
 
@@ -49,7 +50,7 @@ export function AppRoutes(): React.JSX.Element {
         <Route path="/categories" element={<CategoriesPage />} />
         <Route path="/labels" element={<LabelsPage />} />
         <Route path="/cash" element={<CashPage />} />
-        <Route path="/reports" element={<PlaceholderPage title="Reportes" phase="Fase 7" />} />
+        <Route path="/reports" element={<ReportsPage />} />
         <Route path="/backups" element={<PlaceholderPage title="Backups" phase="Fase 8" />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>

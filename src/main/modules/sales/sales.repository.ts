@@ -117,14 +117,41 @@ export function decrementStock(
   return result.changes > 0
 }
 
-export function getSaleById(db: Database.Database, id: number): SaleRow | undefined {
+export interface SaleRowFull extends SaleRow {
+  voided_at: string | null
+  void_reason: string | null
+}
+
+export function getSaleById(db: Database.Database, id: number): SaleRowFull | undefined {
   return db
     .prepare(
       `SELECT id, ticket_number, session_id, subtotal, discount, total,
-              amount_paid, change_amount, price_mode, status, created_at
+              amount_paid, change_amount, price_mode, status, created_at,
+              voided_at, void_reason
        FROM sales WHERE id = ?`
     )
-    .get(id) as SaleRow | undefined
+    .get(id) as SaleRowFull | undefined
+}
+
+export function voidSaleRecord(
+  db: Database.Database,
+  id: number,
+  reason: string
+): void {
+  db.prepare(
+    `UPDATE sales SET status = 'voided', voided_at = datetime('now'), void_reason = ?
+     WHERE id = ? AND status = 'completed'`
+  ).run(reason, id)
+}
+
+export function restoreStock(
+  db: Database.Database,
+  productId: number,
+  quantity: number
+): void {
+  db.prepare(
+    `UPDATE products SET stock = stock + ?, updated_at = datetime('now') WHERE id = ?`
+  ).run(quantity, productId)
 }
 
 export function getSaleItems(db: Database.Database, saleId: number): SaleItemRow[] {

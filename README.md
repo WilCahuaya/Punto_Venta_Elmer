@@ -2,7 +2,14 @@
 
 Sistema POS offline para Windows — Electron + React + SQLite.
 
-## Fase 6 (actual)
+## Fase 7 (actual)
+
+- **Reportes** con filtro por fechas (hoy, 7 y 30 días)
+- Exportación **PDF** (pdfmake) y **Excel** (ExcelJS)
+- Ventas del día/período, ganancias, top productos, anulaciones
+- **Anular ventas** con restauración de stock
+
+## Fase 6
 
 - **Etiquetas** con JsBarcode (CODE128)
 - Código existente o generación automática única
@@ -100,5 +107,5 @@ database/       → Migraciones SQL
 
 ## Próxima fase
 
-**Fase 7** — Reportes PDF y Excel
+**Fase 8** — Backups automáticos y restauración
 # Punto_Venta_Elmer

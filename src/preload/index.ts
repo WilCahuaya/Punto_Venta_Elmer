@@ -1,0 +1,75 @@
+import { contextBridge, ipcRenderer } from 'electron'
+import { IPC_CHANNELS } from '@shared/constants/ipc'
+import type { LoginPayload } from '@shared/types/api'
+import type { SettingsUpdateInput } from '@shared/types/settings'
+import type {
+  CashHistoryFilters,
+  CashMovementInput,
+  CloseCashInput,
+  OpenCashInput
+} from '@shared/types/cash'
+import type { CreateSaleInput, PriceMode } from '@shared/types/sales'
+import type { CategoryInput, CategoryListFilters, ProductInput, ProductListFilters } from '@shared/types/catalog'
+
+const api = {
+  auth: {
+    login: (payload: LoginPayload) => ipcRenderer.invoke(IPC_CHANNELS.AUTH_LOGIN, payload),
+    logout: () => ipcRenderer.invoke(IPC_CHANNELS.AUTH_LOGOUT),
+    getSession: () => ipcRenderer.invoke(IPC_CHANNELS.AUTH_GET_SESSION)
+  },
+  settings: {
+    get: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET),
+    set: (key: string, value: string) => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_SET, key, value),
+    update: (input: SettingsUpdateInput) =>
+      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_UPDATE, input),
+    listPrinters: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_LIST_PRINTERS),
+    pickLogo: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_PICK_LOGO),
+    removeLogo: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_REMOVE_LOGO),
+    logoUrl: (path: string | null) => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_LOGO_URL, path),
+    testPrint: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_TEST_PRINT)
+  },
+  categories: {
+    list: (filters?: CategoryListFilters) =>
+      ipcRenderer.invoke(IPC_CHANNELS.CATEGORIES_LIST, filters),
+    get: (id: number) => ipcRenderer.invoke(IPC_CHANNELS.CATEGORIES_GET, id),
+    create: (input: CategoryInput) => ipcRenderer.invoke(IPC_CHANNELS.CATEGORIES_CREATE, input),
+    update: (id: number, input: CategoryInput) =>
+      ipcRenderer.invoke(IPC_CHANNELS.CATEGORIES_UPDATE, id, input),
+    delete: (id: number) => ipcRenderer.invoke(IPC_CHANNELS.CATEGORIES_DELETE, id)
+  },
+  products: {
+    list: (filters?: ProductListFilters) =>
+      ipcRenderer.invoke(IPC_CHANNELS.PRODUCTS_LIST, filters),
+    get: (id: number) => ipcRenderer.invoke(IPC_CHANNELS.PRODUCTS_GET, id),
+    create: (input: ProductInput) => ipcRenderer.invoke(IPC_CHANNELS.PRODUCTS_CREATE, input),
+    update: (id: number, input: ProductInput) =>
+      ipcRenderer.invoke(IPC_CHANNELS.PRODUCTS_UPDATE, id, input),
+    delete: (id: number) => ipcRenderer.invoke(IPC_CHANNELS.PRODUCTS_DELETE, id),
+    pickImage: () => ipcRenderer.invoke(IPC_CHANNELS.PRODUCTS_PICK_IMAGE),
+    imageUrl: (relativePath: string | null) =>
+      ipcRenderer.invoke(IPC_CHANNELS.PRODUCTS_IMAGE_URL, relativePath)
+  },
+  cash: {
+    getCurrent: () => ipcRenderer.invoke(IPC_CHANNELS.CASH_GET_CURRENT),
+    open: (input: OpenCashInput) => ipcRenderer.invoke(IPC_CHANNELS.CASH_OPEN, input),
+    close: (input: CloseCashInput) => ipcRenderer.invoke(IPC_CHANNELS.CASH_CLOSE, input),
+    addMovement: (input: CashMovementInput) =>
+      ipcRenderer.invoke(IPC_CHANNELS.CASH_ADD_MOVEMENT, input),
+    listMovements: (sessionId?: number) =>
+      ipcRenderer.invoke(IPC_CHANNELS.CASH_LIST_MOVEMENTS, sessionId),
+    history: (filters?: CashHistoryFilters) =>
+      ipcRenderer.invoke(IPC_CHANNELS.CASH_HISTORY, filters),
+    getSession: (id: number) => ipcRenderer.invoke(IPC_CHANNELS.CASH_GET_SESSION, id)
+  },
+  sales: {
+    create: (input: CreateSaleInput) => ipcRenderer.invoke(IPC_CHANNELS.SALES_CREATE, input),
+    printTicket: (saleId: number) => ipcRenderer.invoke(IPC_CHANNELS.SALES_PRINT_TICKET, saleId),
+    lookupBarcode: (barcode: string, priceMode: PriceMode) =>
+      ipcRenderer.invoke(IPC_CHANNELS.PRODUCTS_LOOKUP_BARCODE, barcode, priceMode),
+    searchProducts: (query: string) => ipcRenderer.invoke(IPC_CHANNELS.PRODUCTS_SEARCH_POS, query)
+  }
+}
+
+contextBridge.exposeInMainWorld('api', api)
+
+export type PreloadApi = typeof api

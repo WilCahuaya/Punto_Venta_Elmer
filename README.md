@@ -2,7 +2,13 @@
 
 Sistema POS offline para Windows — Electron + React + SQLite.
 
-## Fase 3 (actual)
+## Fase 4 (actual)
+
+- **Configuración**: empresa, logo, dirección
+- Detección de impresoras Windows y selección ticket / etiquetas
+- Ticket de prueba, sonidos on/off, tema claro/oscuro, símbolo moneda
+
+## Fase 3
 
 - **POS**: escáner USB, búsqueda manual, carrito, modal cantidad
 - Precio menor / mayor (F3), cobro con vuelto, descuento de stock
@@ -79,5 +85,5 @@ database/       → Migraciones SQL
 
 ## Próxima fase
 
-**Fase 4** — Impresoras y configuración (detección, logo, sonidos)
+**Fase 5** — Dashboard KPIs completos
 # Punto_Venta_Elmer

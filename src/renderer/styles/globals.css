@@ -1,0 +1,35 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --surface: 248 250 252;
+    --surface-elevated: 255 255 255;
+    --surface-border: 226 232 240;
+    --brand: 37 99 235;
+    --brand-hover: 29 78 216;
+    --text: 15 23 42;
+    --text-muted: 100 116 139;
+  }
+
+  .dark {
+    --surface: 15 23 42;
+    --surface-elevated: 30 41 59;
+    --surface-border: 51 65 85;
+    --brand: 59 130 246;
+    --brand-hover: 96 165 250;
+    --text: 248 250 252;
+    --text-muted: 148 163 184;
+  }
+
+  html,
+  body,
+  #root {
+    @apply h-full;
+  }
+
+  body {
+    @apply bg-surface font-sans text-[rgb(var(--text))] antialiased;
+  }
+}

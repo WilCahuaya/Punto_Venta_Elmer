@@ -1,0 +1,48 @@
+import type Database from 'better-sqlite3'
+import { hashPassword } from '../utils/crypto'
+
+const DEFAULT_USER = 'admin'
+const DEFAULT_PASS = 'admin123'
+
+export function seedDatabase(database: Database.Database): void {
+  const userCount = database.prepare('SELECT COUNT(*) as c FROM users').get() as { c: number }
+  if (userCount.c === 0) {
+    database
+      .prepare(
+        `INSERT INTO users (username, password_hash, display_name)
+         VALUES (?, ?, ?)`
+      )
+      .run(DEFAULT_USER, hashPassword(DEFAULT_PASS), 'Administrador')
+  }
+
+  const defaults: Record<string, string> = {
+    theme: 'light',
+    currency_symbol: 'S/',
+    currency_decimals: '2',
+    sounds_enabled: 'true',
+    company_name: 'Mi Negocio',
+    company_address: '',
+    printer_ticket: '',
+    printer_labels: ''
+  }
+
+  const upsert = database.prepare(
+    `INSERT INTO settings (key, value) VALUES (?, ?)
+     ON CONFLICT(key) DO NOTHING`
+  )
+
+  for (const [key, value] of Object.entries(defaults)) {
+    upsert.run(key, value)
+  }
+
+  database
+    .prepare(
+      `INSERT INTO app_meta (key, value) VALUES ('schema_version', ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+    )
+    .run('001_init')
+}
+
+export function getDefaultCredentials(): { username: string; password: string } {
+  return { username: DEFAULT_USER, password: DEFAULT_PASS }
+}

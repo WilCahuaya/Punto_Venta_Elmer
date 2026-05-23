@@ -41,6 +41,7 @@ export function PosPage(): React.JSX.Element {
   const [serviceOpen, setServiceOpen] = useState(false)
   const [serviceProductId, setServiceProductId] = useState<number | null>(null)
   const [statusMsg, setStatusMsg] = useState<string | null>(null)
+  const [successMsg, setSuccessMsg] = useState<string | null>(null)
 
   const subtotal = getSubtotal()
   const total = getTotal()
@@ -48,6 +49,12 @@ export function PosPage(): React.JSX.Element {
   const focusBarcode = useCallback(() => {
     barcodeRef.current?.focus()
   }, [])
+
+  useEffect(() => {
+    if (!successMsg) return
+    const timer = window.setTimeout(() => setSuccessMsg(null), 5000)
+    return () => window.clearTimeout(timer)
+  }, [successMsg])
 
   useEffect(() => {
     if (isOpen) focusBarcode()
@@ -159,11 +166,12 @@ export function PosPage(): React.JSX.Element {
     if (soundsEnabled) playSuccessSound()
 
     const printRes = await window.api.sales.printTicket(result.data.id)
-    if (!printRes.ok) {
-      setStatusMsg(`Venta OK · Impresión: ${printRes.error}`)
-    } else {
-      setStatusMsg(`Venta ${result.data.ticketNumber} registrada`)
-    }
+    setStatusMsg(null)
+    setSuccessMsg(
+      printRes.ok
+        ? `¡Venta realizada exitosamente! · Ticket ${result.data.ticketNumber}`
+        : `¡Venta realizada exitosamente! · Ticket ${result.data.ticketNumber} (sin imprimir: ${printRes.error})`
+    )
 
     clearCart()
     setPaymentOpen(false)
@@ -217,7 +225,15 @@ export function PosPage(): React.JSX.Element {
   }
 
   return (
-    <div className="flex h-[calc(100vh-3rem)] flex-col gap-4">
+    <div className="relative flex h-[calc(100vh-3rem)] flex-col gap-4">
+      {successMsg && (
+        <div
+          role="status"
+          className="absolute right-0 top-0 z-50 max-w-md rounded-xl border border-emerald-500/40 bg-emerald-600 px-4 py-3 text-sm font-medium text-white shadow-lg"
+        >
+          {successMsg}
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-3">
         <div className="min-w-[280px] flex-1">
           <input

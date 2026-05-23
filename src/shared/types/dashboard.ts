@@ -18,8 +18,9 @@ export interface LowStockProduct {
 
 export interface DashboardStats {
   date: string
-  /** Ventas completadas del día (calendario). */
+  /** Ingresos netos del día (ventas − devoluciones), igual que Reportes → Hoy. */
   dailySalesTotal: number
+  dailyReturnsTotal: number
   dailySalesProfit: number
   dailySalesCount: number
   /** Caja actual. */

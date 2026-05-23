@@ -27,7 +27,7 @@ export function DashboardPage(): React.JSX.Element {
   if (loading && !stats) {
     return (
       <div className="flex h-64 items-center justify-center text-[rgb(var(--text-muted))]">
-        Cargando dashboard...
+        Cargando...
       </div>
     )
   }
@@ -46,12 +46,12 @@ export function DashboardPage(): React.JSX.Element {
   const session = stats.currentSession
 
   return (
-    <div>
-      <header className="mb-6 flex flex-wrap items-center justify-between gap-4">
+    <div className="space-y-8">
+      <header className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-semibold">Dashboard</h2>
+          <h2 className="text-2xl font-semibold">Inicio</h2>
           <p className="text-sm text-[rgb(var(--text-muted))]">
-            Resumen del día {formatDisplayDate(stats.date)}
+            {formatDisplayDate(stats.date)}
           </p>
         </div>
         <Button variant="secondary" onClick={() => void load()}>
@@ -59,141 +59,127 @@ export function DashboardPage(): React.JSX.Element {
         </Button>
       </header>
 
-      {/* KPIs del día */}
-      <h3 className="mb-3 text-sm font-medium text-[rgb(var(--text-muted))]">Hoy</h3>
-      <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Ventas del día" highlight>
-          <MoneyDisplay amount={stats.dailySalesTotal} size="lg" />
-          <p className="mt-1 text-xs text-[rgb(var(--text-muted))]">
-            {stats.dailySalesCount} ticket(s)
-          </p>
-        </StatCard>
-
-        <StatCard title="Ganancias del día">
-          <MoneyDisplay amount={stats.dailySalesProfit} size="lg" className="text-emerald-600" />
-        </StatCard>
-
-        <StatCard title="Estado de caja">
+      {/* Caja — lo más urgente para el cajero */}
+      <section className="rounded-xl border border-brand/20 bg-brand/5 p-5">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <h3 className="font-medium">Caja</h3>
           <Badge variant={stats.cashOpen ? 'success' : 'warning'}>
             {stats.cashOpen ? 'Abierta' : 'Cerrada'}
           </Badge>
-          {!stats.cashOpen && (
-            <Link to="/cash" className="mt-2 inline-block">
-              <Button variant="ghost">Abrir caja</Button>
-            </Link>
-          )}
-        </StatCard>
+        </div>
 
-        <StatCard title="Stock bajo">
-          <span className="text-2xl font-semibold tabular-nums text-amber-600">
-            {stats.lowStockProducts.length}
-          </span>
-          <p className="mt-1 text-xs text-[rgb(var(--text-muted))]">producto(s)</p>
-        </StatCard>
-      </div>
-
-      {/* Turno actual */}
-      {stats.cashOpen && session && (
-        <>
-          <h3 className="mb-3 text-sm font-medium text-[rgb(var(--text-muted))]">
-            Turno actual #{session.id}
-          </h3>
-          <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard title="Ventas del turno">
-              <MoneyDisplay amount={session.totalSales} size="lg" />
-            </StatCard>
-            <StatCard title="Ganancia del turno">
-              <MoneyDisplay amount={session.salesProfit} size="lg" />
-            </StatCard>
-            <StatCard title="En caja (esperado)">
-              <MoneyDisplay amount={session.expectedInDrawer} size="lg" />
-            </StatCard>
-            <StatCard title="Apertura">
-              <MoneyDisplay amount={session.openingAmount} size="lg" />
-            </StatCard>
+        {stats.cashOpen && session ? (
+          <div className="flex flex-wrap items-end justify-between gap-6">
+            <div>
+              <p className="text-sm text-[rgb(var(--text-muted))]">Efectivo esperado ahora</p>
+              <MoneyDisplay amount={session.expectedInDrawer} size="lg" className="mt-1 font-semibold" />
+              <p className="mt-2 text-xs text-[rgb(var(--text-muted))]">
+                Turno #{session.id} · Abierto {formatDateTime(session.openedAt)}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Link to="/cash">
+                <Button>Ir a Caja</Button>
+              </Link>
+              <Link to="/cash?tab=tickets">
+                <Button variant="secondary" type="button">
+                  Tickets del turno
+                </Button>
+              </Link>
+            </div>
           </div>
-          <p className="mb-8 text-xs text-[rgb(var(--text-muted))]">
-            Abierto {formatDateTime(session.openedAt)}
-            {session.openedByName && ` · ${session.openedByName}`}
-          </p>
-        </>
-      )}
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <p className="text-sm text-[rgb(var(--text-muted))]">
+              Abra la caja para vender desde el POS.
+            </p>
+            <Link to="/cash">
+              <Button>Abrir caja</Button>
+            </Link>
+          </div>
+        )}
+      </section>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Top productos */}
+      {/* Negocio hoy */}
+      <section>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-medium text-[rgb(var(--text-muted))]">Negocio hoy</h3>
+          <Link to="/reports" className="text-xs text-brand hover:underline">
+            Detalle en Reportes → Hoy
+          </Link>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard title="Ingresos netos" highlight>
+            <MoneyDisplay amount={stats.dailySalesTotal} size="lg" />
+            <p className="mt-1 text-xs text-[rgb(var(--text-muted))]">
+              {stats.dailySalesCount} venta(s)
+            </p>
+          </StatCard>
+          <StatCard title="Devoluciones">
+            <MoneyDisplay
+              amount={stats.dailyReturnsTotal}
+              size="lg"
+              className={stats.dailyReturnsTotal > 0 ? 'text-amber-600' : ''}
+            />
+          </StatCard>
+          <StatCard title="Ganancia">
+            <MoneyDisplay amount={stats.dailySalesProfit} size="lg" className="text-emerald-600" />
+          </StatCard>
+          <StatCard title="Stock bajo">
+            <span className="text-2xl font-semibold tabular-nums text-amber-600">
+              {stats.lowStockProducts.length}
+            </span>
+            <Link to="/products" className="mt-2 block text-xs text-brand hover:underline">
+              Ver productos
+            </Link>
+          </StatCard>
+        </div>
+      </section>
+
+      {stats.topProductsToday.length > 0 && (
         <section className="rounded-xl border border-surface-border bg-surface-elevated">
           <div className="border-b border-surface-border px-4 py-3">
-            <h3 className="font-medium">Productos más vendidos hoy</h3>
+            <h3 className="text-sm font-medium">Top productos hoy</h3>
           </div>
-          {stats.topProductsToday.length === 0 ? (
-            <p className="px-4 py-8 text-center text-sm text-[rgb(var(--text-muted))]">
-              Sin ventas registradas hoy
-            </p>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-surface-border text-left text-[rgb(var(--text-muted))]">
-                  <th className="px-4 py-2 font-medium">Producto</th>
-                  <th className="px-4 py-2 font-medium text-right">Cant.</th>
-                  <th className="px-4 py-2 font-medium text-right">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {stats.topProductsToday.map((p, i) => (
-                  <tr key={p.productId} className="border-b border-surface-border/50">
-                    <td className="px-4 py-2.5">
-                      <span className="mr-2 text-xs text-[rgb(var(--text-muted))]">
-                        #{i + 1}
-                      </span>
-                      {p.productName}
-                    </td>
-                    <td className="px-4 py-2.5 text-right tabular-nums">{p.quantitySold}</td>
-                    <td className="px-4 py-2.5 text-right">
-                      <MoneyDisplay amount={p.revenue} size="sm" />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+          <ul className="divide-y divide-surface-border/60">
+            {stats.topProductsToday.slice(0, 5).map((p, i) => (
+              <li
+                key={p.productId}
+                className="flex items-center justify-between gap-2 px-4 py-2.5 text-sm"
+              >
+                <span>
+                  <span className="mr-2 text-[rgb(var(--text-muted))]">#{i + 1}</span>
+                  {p.productName}
+                </span>
+                <MoneyDisplay amount={p.revenue} size="sm" />
+              </li>
+            ))}
+          </ul>
         </section>
+      )}
 
-        {/* Stock bajo */}
-        <section className="rounded-xl border border-surface-border bg-surface-elevated">
-          <div className="flex items-center justify-between border-b border-surface-border px-4 py-3">
-            <h3 className="font-medium">Alertas de stock bajo</h3>
-            <Link to="/products">
-              <Button variant="ghost">Ver productos</Button>
-            </Link>
+      {stats.lowStockProducts.length > 0 && (
+        <section className="rounded-xl border border-amber-500/30 bg-amber-500/5">
+          <div className="border-b border-amber-500/20 px-4 py-3">
+            <h3 className="text-sm font-medium text-amber-800 dark:text-amber-300">
+              Stock bajo ({stats.lowStockProducts.length})
+            </h3>
           </div>
-          {stats.lowStockProducts.length === 0 ? (
-            <p className="px-4 py-8 text-center text-sm text-[rgb(var(--text-muted))]">
-              Todo el stock está por encima del mínimo
-            </p>
-          ) : (
-            <ul className="divide-y divide-surface-border/60">
-              {stats.lowStockProducts.map((p) => (
-                <li
-                  key={p.id}
-                  className="flex items-center justify-between gap-2 px-4 py-2.5 text-sm"
-                >
-                  <div>
-                    <span className="font-medium">{p.name}</span>
-                    {p.categoryName && (
-                      <span className="ml-2 text-xs text-[rgb(var(--text-muted))]">
-                        {p.categoryName}
-                      </span>
-                    )}
-                  </div>
-                  <Badge variant="warning">
-                    {p.stock} / {p.stockMin}
-                  </Badge>
-                </li>
-              ))}
-            </ul>
-          )}
+          <ul className="max-h-48 divide-y divide-amber-500/10 overflow-y-auto">
+            {stats.lowStockProducts.map((p) => (
+              <li
+                key={p.id}
+                className="flex items-center justify-between gap-2 px-4 py-2 text-sm"
+              >
+                <span>{p.name}</span>
+                <Badge variant="warning">
+                  {p.stock} / {p.stockMin}
+                </Badge>
+              </li>
+            ))}
+          </ul>
         </section>
-      </div>
+      )}
     </div>
   )
 }

@@ -1,27 +1,10 @@
 import type { ApiResult } from '@shared/types/api'
 import type { DashboardStats, LowStockProduct, TopProduct } from '@shared/types/dashboard'
-import { roundMoney } from '@shared/lib/currency'
+import { localDateIso } from '@shared/lib/local-date'
 import { getDatabase } from '../../database/connection'
 import { getCurrentCashService } from '../cash/cash.service'
-import { fromMoneyDb } from '../../utils/money-db'
-import {
-  getDailyProfit,
-  getDailySales,
-  getLowStockProducts,
-  getTodayDate,
-  getTopProductsToday,
-  type LowStockRow,
-  type TopProductRow
-} from './dashboard.repository'
-
-function mapTopProduct(row: TopProductRow): TopProduct {
-  return {
-    productId: row.product_id,
-    productName: row.product_name,
-    quantitySold: Number(row.qty),
-    revenue: fromMoneyDb(row.revenue)
-  }
-}
+import { getReportSummaryService } from '../reports/reports.service'
+import { getLowStockProducts, type LowStockRow } from './dashboard.repository'
 
 function mapLowStock(row: LowStockRow): LowStockProduct {
   return {
@@ -34,9 +17,28 @@ function mapLowStock(row: LowStockRow): LowStockProduct {
   }
 }
 
+function mapTopFromReport(p: {
+  productId: number
+  productName: string
+  quantitySold: number
+  revenue: number
+}): TopProduct {
+  return {
+    productId: p.productId,
+    productName: p.productName,
+    quantitySold: p.quantitySold,
+    revenue: p.revenue
+  }
+}
+
+/** KPIs del día alineados con Reportes (misma consulta y totales netos). */
 export function getDashboardStatsService(): ApiResult<DashboardStats> {
   const db = getDatabase()
-  const daily = getDailySales(db)
+  const today = localDateIso()
+  const reportResult = getReportSummaryService({ dateFrom: today, dateTo: today })
+  if (!reportResult.ok) return reportResult
+
+  const r = reportResult.data
   const cashResult = getCurrentCashService()
 
   let currentSession = null
@@ -49,13 +51,14 @@ export function getDashboardStatsService(): ApiResult<DashboardStats> {
   return {
     ok: true,
     data: {
-      date: getTodayDate(db),
-      dailySalesTotal: fromMoneyDb(daily.total),
-      dailySalesProfit: roundMoney(getDailyProfit(db)),
-      dailySalesCount: daily.count,
+      date: today,
+      dailySalesTotal: r.netCompletedTotal,
+      dailyReturnsTotal: r.returnsTotal,
+      dailySalesProfit: r.profit,
+      dailySalesCount: r.completedCount,
       cashOpen,
       currentSession,
-      topProductsToday: getTopProductsToday(db, 5).map(mapTopProduct),
+      topProductsToday: r.topProducts.slice(0, 5).map(mapTopFromReport),
       lowStockProducts: getLowStockProducts(db, 8).map(mapLowStock)
     }
   }

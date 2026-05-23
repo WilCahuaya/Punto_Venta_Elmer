@@ -62,7 +62,17 @@ export function CloseCashModal({ open, summary, onClose }: CloseCashModalProps):
             <MoneyDisplay amount={summary.expectedInDrawer} />
           </div>
           <div className="flex justify-between py-1">
-            <span className="text-[rgb(var(--text-muted))]">Ventas del turno</span>
+            <span className="text-[rgb(var(--text-muted))]">+ Ventas cobradas</span>
+            <MoneyDisplay amount={summary.totalSalesGross} size="sm" />
+          </div>
+          {summary.totalReturns > 0 && (
+            <div className="flex justify-between py-1 text-amber-600">
+              <span>− Devoluciones</span>
+              <MoneyDisplay amount={summary.totalReturns} size="sm" />
+            </div>
+          )}
+          <div className="flex justify-between py-1">
+            <span className="text-[rgb(var(--text-muted))]">= Ventas netas en caja</span>
             <MoneyDisplay amount={summary.totalSales} size="sm" />
           </div>
           <div className="flex justify-between py-1">

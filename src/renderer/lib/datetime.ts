@@ -1,3 +1,9 @@
+export {
+  localDateIso,
+  startOfMonth,
+  startOfWeekMonday
+} from '@shared/lib/local-date'
+
 export function formatDateTime(iso: string): string {
   const normalized = iso.includes('T') ? iso : iso.replace(' ', 'T')
   const d = new Date(normalized)

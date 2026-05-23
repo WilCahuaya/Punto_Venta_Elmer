@@ -115,7 +115,7 @@ export function sumMovements(
   return Number(row.total)
 }
 
-export function sumSales(db: Database.Database, sessionId: number): number {
+export function sumSalesGross(db: Database.Database, sessionId: number): number {
   const row = db
     .prepare(
       `SELECT COALESCE(SUM(total), 0) AS total FROM sales
@@ -125,10 +125,46 @@ export function sumSales(db: Database.Database, sessionId: number): number {
   return Number(row.total)
 }
 
+export function sumReturnsInSession(db: Database.Database, sessionId: number): number {
+  const row = db
+    .prepare(
+      `SELECT COALESCE(SUM(sri.line_total), 0) AS total
+       FROM sale_return_items sri
+       INNER JOIN sale_returns sr ON sr.id = sri.return_id
+       INNER JOIN sales s ON s.id = sr.sale_id
+       WHERE s.session_id = ? AND s.status = 'completed'`
+    )
+    .get(sessionId) as { total: string }
+  return Number(row.total)
+}
+
+/** Ventas netas del turno (bruto − devoluciones), coherente con Reportes y efectivo esperado. */
+export function sumSales(db: Database.Database, sessionId: number): number {
+  const row = db
+    .prepare(
+      `SELECT COALESCE(SUM(
+         s.total - (
+           SELECT COALESCE(SUM(sri.line_total), 0)
+           FROM sale_return_items sri
+           INNER JOIN sale_returns sr ON sr.id = sri.return_id
+           WHERE sr.sale_id = s.id
+         )
+       ), 0) AS total
+       FROM sales s
+       WHERE s.session_id = ? AND s.status = 'completed'`
+    )
+    .get(sessionId) as { total: string }
+  return Number(row.total)
+}
+
 export function sumSalesProfit(db: Database.Database, sessionId: number): number {
   const row = db
     .prepare(
-      `SELECT COALESCE(SUM(si.line_total - (si.cost_price * si.quantity)), 0) AS profit
+      `SELECT COALESCE(SUM(
+         si.line_total
+         - si.unit_price * COALESCE(si.returned_quantity, 0)
+         - si.cost_price * MAX(0, si.quantity - COALESCE(si.returned_quantity, 0))
+       ), 0) AS profit
        FROM sale_items si
        INNER JOIN sales s ON s.id = si.sale_id
        WHERE s.session_id = ? AND s.status = 'completed'`

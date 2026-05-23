@@ -25,7 +25,9 @@ export async function writeReportExcel(
     { label: 'Desde', value: report.dateFrom },
     { label: 'Hasta', value: report.dateTo },
     { label: 'Ventas completadas', value: report.completedCount },
-    { label: 'Total ventas', value: money(report.completedTotal, currencySymbol) },
+    { label: 'Total ventas (bruto)', value: money(report.completedTotal, currencySymbol) },
+    { label: 'Devoluciones', value: money(report.returnsTotal, currencySymbol) },
+    { label: 'Total neto ingresos', value: money(report.netCompletedTotal, currencySymbol) },
     { label: 'Ganancia', value: money(report.profit, currencySymbol) },
     { label: 'Anulaciones', value: report.voidedCount },
     { label: 'Total anulado', value: money(report.voidedTotal, currencySymbol) }

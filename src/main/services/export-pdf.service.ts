@@ -78,7 +78,8 @@ function buildDocDefinition(
       {
         columns: [
           { text: `Ventas: ${report.completedCount}` },
-          { text: `Total: ${money(report.completedTotal, currencySymbol)}` },
+          { text: `Total neto: ${money(report.netCompletedTotal, currencySymbol)}` },
+          { text: `Devoluciones: ${money(report.returnsTotal, currencySymbol)}` },
           { text: `Ganancia: ${money(report.profit, currencySymbol)}` }
         ],
         margin: [0, 0, 0, 8]

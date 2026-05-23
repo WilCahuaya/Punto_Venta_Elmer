@@ -2,6 +2,7 @@ import { dialog, shell } from 'electron'
 import type { ApiResult } from '@shared/types/api'
 import type { ReportDateRange, ReportSaleRow, ReportSummary } from '@shared/types/reports'
 import { roundMoney } from '@shared/lib/currency'
+import { localDateIso } from '@shared/lib/local-date'
 import { getDatabase } from '../../database/connection'
 import { fromMoneyDb } from '../../utils/money-db'
 import { writeReportExcel } from '../../services/export-excel.service'
@@ -9,6 +10,7 @@ import { writeReportPdf } from '../../services/export-pdf.service'
 import {
   getReportSummary,
   getTopProductsInRange,
+  listAllSalesInRange,
   listSalesInRange,
   type SaleListRow,
   type TopProductRow
@@ -23,16 +25,21 @@ function getSetting(key: string, fallback = ''): string {
 }
 
 function mapSaleRow(row: SaleListRow): ReportSaleRow {
+  const total = fromMoneyDb(row.total)
+  const returnedTotal = fromMoneyDb(row.returned_total)
   return {
     id: row.id,
     ticketNumber: row.ticket_number,
     createdAt: row.created_at,
     subtotal: fromMoneyDb(row.subtotal),
     discount: fromMoneyDb(row.discount),
-    total: fromMoneyDb(row.total),
+    total,
+    returnedTotal,
+    netTotal: roundMoney(row.status === 'voided' ? 0 : Math.max(0, total - returnedTotal)),
     status: row.status as ReportSaleRow['status'],
     voidReason: row.void_reason,
     voidedAt: row.voided_at,
+    voidedByName: row.voided_by_name,
     itemCount: row.item_count
   }
 }
@@ -47,7 +54,7 @@ function mapTop(row: TopProductRow) {
 }
 
 function normalizeRange(range: ReportDateRange): ReportDateRange {
-  const from = range.dateFrom?.trim() || new Date().toISOString().slice(0, 10)
+  const from = range.dateFrom?.trim() || localDateIso()
   const to = range.dateTo?.trim() || from
   if (from > to) return { dateFrom: to, dateTo: from }
   return { dateFrom: from, dateTo: to }
@@ -57,6 +64,8 @@ export function getReportSummaryService(range: ReportDateRange): ApiResult<Repor
   const db = getDatabase()
   const r = normalizeRange(range)
   const summary = getReportSummary(db, r)
+  const completedTotal = fromMoneyDb(summary.completed_total)
+  const returnsTotal = fromMoneyDb(summary.returns_total)
 
   return {
     ok: true,
@@ -64,11 +73,14 @@ export function getReportSummaryService(range: ReportDateRange): ApiResult<Repor
       dateFrom: r.dateFrom,
       dateTo: r.dateTo,
       completedCount: summary.completed_count,
-      completedTotal: fromMoneyDb(summary.completed_total),
+      completedTotal,
+      returnsTotal,
+      netCompletedTotal: roundMoney(Math.max(0, completedTotal - returnsTotal)),
       profit: roundMoney(Number(summary.profit)),
       voidedCount: summary.voided_count,
       voidedTotal: fromMoneyDb(summary.voided_total),
       topProducts: getTopProductsInRange(db, r).map(mapTop),
+      allSales: listAllSalesInRange(db, r).map(mapSaleRow),
       sales: listSalesInRange(db, r, 'completed').map(mapSaleRow),
       voidedSales: listSalesInRange(db, r, 'voided').map(mapSaleRow)
     }

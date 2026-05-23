@@ -10,9 +10,12 @@ export interface ReportSaleRow {
   subtotal: number
   discount: number
   total: number
+  netTotal: number
+  returnedTotal: number
   status: 'completed' | 'voided'
   voidReason: string | null
   voidedAt: string | null
+  voidedByName: string | null
   itemCount: number
 }
 
@@ -28,10 +31,14 @@ export interface ReportSummary {
   dateTo: string
   completedCount: number
   completedTotal: number
+  returnsTotal: number
+  netCompletedTotal: number
   profit: number
   voidedCount: number
   voidedTotal: number
   topProducts: ReportTopProduct[]
+  /** Historial unificado (completadas y anuladas). */
+  allSales: ReportSaleRow[]
   sales: ReportSaleRow[]
   voidedSales: ReportSaleRow[]
 }

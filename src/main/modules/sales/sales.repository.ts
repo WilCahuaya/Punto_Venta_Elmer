@@ -120,15 +120,20 @@ export function decrementStock(
 export interface SaleRowFull extends SaleRow {
   voided_at: string | null
   void_reason: string | null
+  voided_by: number | null
+  voided_by_name: string | null
 }
 
 export function getSaleById(db: Database.Database, id: number): SaleRowFull | undefined {
   return db
     .prepare(
-      `SELECT id, ticket_number, session_id, subtotal, discount, total,
-              amount_paid, change_amount, price_mode, status, created_at,
-              voided_at, void_reason
-       FROM sales WHERE id = ?`
+      `SELECT s.id, s.ticket_number, s.session_id, s.subtotal, s.discount, s.total,
+              s.amount_paid, s.change_amount, s.price_mode, s.status, s.created_at,
+              s.voided_at, s.void_reason, s.voided_by,
+              u.display_name AS voided_by_name
+       FROM sales s
+       LEFT JOIN users u ON u.id = s.voided_by
+       WHERE s.id = ?`
     )
     .get(id) as SaleRowFull | undefined
 }
@@ -136,12 +141,13 @@ export function getSaleById(db: Database.Database, id: number): SaleRowFull | un
 export function voidSaleRecord(
   db: Database.Database,
   id: number,
-  reason: string
+  reason: string,
+  voidedBy: number | null
 ): void {
   db.prepare(
-    `UPDATE sales SET status = 'voided', voided_at = datetime('now'), void_reason = ?
+    `UPDATE sales SET status = 'voided', voided_at = datetime('now'), void_reason = ?, voided_by = ?
      WHERE id = ? AND status = 'completed'`
-  ).run(reason, id)
+  ).run(reason, voidedBy, id)
 }
 
 export function restoreStock(
@@ -161,4 +167,41 @@ export function getSaleItems(db: Database.Database, saleId: number): SaleItemRow
        FROM sale_items WHERE sale_id = ?`
     )
     .all(saleId) as SaleItemRow[]
+}
+
+export interface SaleListRow {
+  id: number
+  ticket_number: string
+  session_id: number
+  created_at: string
+  subtotal: string
+  discount: string
+  total: string
+  amount_paid: string
+  change_amount: string
+  status: string
+  void_reason: string | null
+  voided_at: string | null
+  voided_by_name: string | null
+  returned_total: string
+  item_count: number
+}
+
+export function listSalesForSession(db: Database.Database, sessionId: number): SaleListRow[] {
+  return db
+    .prepare(
+      `SELECT s.id, s.ticket_number, s.session_id, s.created_at, s.subtotal, s.discount, s.total,
+              s.amount_paid, s.change_amount, s.status, s.void_reason, s.voided_at,
+              u.display_name AS voided_by_name,
+              (SELECT COALESCE(SUM(sri.line_total), 0)
+               FROM sale_return_items sri
+               INNER JOIN sale_returns sr ON sr.id = sri.return_id
+               WHERE sr.sale_id = s.id) AS returned_total,
+              (SELECT COUNT(*) FROM sale_items WHERE sale_id = s.id) AS item_count
+       FROM sales s
+       LEFT JOIN users u ON u.id = s.voided_by
+       WHERE s.session_id = ?
+       ORDER BY s.created_at DESC`
+    )
+    .all(sessionId) as SaleListRow[]
 }

@@ -18,8 +18,14 @@ export interface CashSession {
 export interface CashSessionSummary extends CashSession {
   totalIncome: number
   totalExpense: number
+  /** Ventas completadas cobradas en efectivo (bruto del ticket). */
+  totalSalesGross: number
+  /** Dinero devuelto al cliente en este turno (sale de la caja). */
+  totalReturns: number
+  /** Ventas netas = bruto − devoluciones; base del efectivo esperado. */
   totalSales: number
   salesProfit: number
+  /** Apertura + ingresos − egresos + ventas netas. */
   expectedInDrawer: number
 }
 

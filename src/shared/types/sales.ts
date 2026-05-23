@@ -58,6 +58,8 @@ export interface SaleItem {
   lineTotal: number
 }
 
+export type SaleStatus = 'completed' | 'voided'
+
 export interface Sale {
   id: number
   ticketNumber: string
@@ -68,8 +70,54 @@ export interface Sale {
   amountPaid: number
   changeAmount: number
   priceMode: PriceMode
+  status: SaleStatus
   items: SaleItem[]
   createdAt: string
+  voidedAt?: string | null
+  voidReason?: string | null
+  voidedByName?: string | null
+  returnedTotal?: number
+  netTotal?: number
+}
+
+export interface SaleItemDetail extends SaleItem {
+  returnedQuantity: number
+  returnableQuantity: number
+}
+
+export interface SaleDetail extends Sale {
+  items: SaleItemDetail[]
+}
+
+export interface PartialReturnLineInput {
+  saleItemId: number
+  quantity: number
+}
+
+export interface PartialReturnInput {
+  saleId: number
+  reason: string
+  items: PartialReturnLineInput[]
+}
+
+/** Venta en listado por sesión de caja o reportes. */
+export interface SaleListEntry {
+  id: number
+  ticketNumber: string
+  sessionId: number
+  createdAt: string
+  subtotal: number
+  discount: number
+  total: number
+  netTotal: number
+  returnedTotal: number
+  amountPaid: number
+  changeAmount: number
+  status: SaleStatus
+  voidReason: string | null
+  voidedAt: string | null
+  voidedByName: string | null
+  itemCount: number
 }
 
 export function productToPosProduct(product: Product): PosProduct {

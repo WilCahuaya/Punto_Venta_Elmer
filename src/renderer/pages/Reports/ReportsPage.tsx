@@ -1,25 +1,32 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { ReportDateRange, ReportSummary } from '@shared/types/reports'
+import type { ReportDateRange, ReportSaleRow, ReportSummary } from '@shared/types/reports'
 import { Badge } from '../../components/ui/Badge'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { MoneyDisplay } from '../../components/ui/MoneyDisplay'
-import { formatDateTime } from '../../lib/datetime'
+import { ReturnSaleModal } from '../../features/reports/ReturnSaleModal'
+import { VoidSaleModal } from '../../features/reports/VoidSaleModal'
+import {
+  formatDateTime,
+  localDateIso,
+  startOfMonth,
+  startOfWeekMonday
+} from '../../lib/datetime'
 
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10)
+function saleStatusLabel(status: ReportSaleRow['status']): string {
+  return status === 'voided' ? 'ANULADA' : 'COMPLETADA'
 }
 
 export function ReportsPage(): React.JSX.Element {
-  const [dateFrom, setDateFrom] = useState(todayIso())
-  const [dateTo, setDateTo] = useState(todayIso())
+  const [dateFrom, setDateFrom] = useState(() => localDateIso())
+  const [dateTo, setDateTo] = useState(() => localDateIso())
   const [report, setReport] = useState<ReportSummary | null>(null)
   const [loading, setLoading] = useState(false)
   const [exporting, setExporting] = useState<'pdf' | 'excel' | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [voidReason, setVoidReason] = useState('')
-  const [voidTargetId, setVoidTargetId] = useState<number | null>(null)
+  const [voidTarget, setVoidTarget] = useState<ReportSaleRow | null>(null)
+  const [returnTarget, setReturnTarget] = useState<ReportSaleRow | null>(null)
 
   const range: ReportDateRange = { dateFrom, dateTo }
 
@@ -54,26 +61,34 @@ export function ReportsPage(): React.JSX.Element {
     else setMessage(`Excel guardado: ${result.data}`)
   }
 
-  async function handleVoid(saleId: number): Promise<void> {
-    const reason = voidReason.trim() || prompt('Motivo de anulación:')?.trim()
-    if (!reason) return
-    const result = await window.api.sales.void({ saleId, reason })
+  async function handleVoidConfirm(reason: string): Promise<void> {
+    if (!voidTarget) return
+    const result = await window.api.sales.void({ saleId: voidTarget.id, reason })
     if (!result.ok) {
       setError(result.error)
       return
     }
-    setVoidTargetId(null)
-    setVoidReason('')
+    setVoidTarget(null)
     setMessage(`Venta ${result.data.ticketNumber} anulada`)
     void load()
   }
 
-  function setQuickRange(days: number): void {
-    const to = new Date()
-    const from = new Date()
-    from.setDate(from.getDate() - (days - 1))
-    setDateTo(to.toISOString().slice(0, 10))
-    setDateFrom(from.toISOString().slice(0, 10))
+  function setRangeToday(): void {
+    const today = localDateIso()
+    setDateFrom(today)
+    setDateTo(today)
+  }
+
+  function setRangeThisWeek(): void {
+    const today = new Date()
+    setDateFrom(localDateIso(startOfWeekMonday(today)))
+    setDateTo(localDateIso(today))
+  }
+
+  function setRangeThisMonth(): void {
+    const today = new Date()
+    setDateFrom(localDateIso(startOfMonth(today)))
+    setDateTo(localDateIso(today))
   }
 
   return (
@@ -82,7 +97,7 @@ export function ReportsPage(): React.JSX.Element {
         <div>
           <h2 className="text-2xl font-semibold">Reportes</h2>
           <p className="text-sm text-[rgb(var(--text-muted))]">
-            Ventas, ganancias, top productos y anulaciones
+            Análisis por fechas, exportación y correcciones
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -119,15 +134,15 @@ export function ReportsPage(): React.JSX.Element {
           value={dateTo}
           onChange={(e) => setDateTo(e.target.value)}
         />
-        <div className="flex gap-2 pb-2">
-          <Button variant="ghost" type="button" onClick={() => setQuickRange(1)}>
+        <div className="flex flex-wrap gap-2 pb-2">
+          <Button variant="ghost" type="button" onClick={setRangeToday}>
             Hoy
           </Button>
-          <Button variant="ghost" type="button" onClick={() => setQuickRange(7)}>
-            7 días
+          <Button variant="ghost" type="button" onClick={setRangeThisWeek}>
+            Esta semana
           </Button>
-          <Button variant="ghost" type="button" onClick={() => setQuickRange(30)}>
-            30 días
+          <Button variant="ghost" type="button" onClick={setRangeThisMonth}>
+            Este mes
           </Button>
         </div>
       </div>
@@ -143,10 +158,13 @@ export function ReportsPage(): React.JSX.Element {
         <p className="text-[rgb(var(--text-muted))]">Cargando...</p>
       ) : report ? (
         <>
-          <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
             <KpiCard title="Ventas completadas" value={report.completedCount} suffix="tickets" />
-            <KpiCard title="Total vendido">
-              <MoneyDisplay amount={report.completedTotal} size="lg" />
+            <KpiCard title="Total neto (ingresos)">
+              <MoneyDisplay amount={report.netCompletedTotal} size="lg" />
+            </KpiCard>
+            <KpiCard title="Devoluciones">
+              <MoneyDisplay amount={report.returnsTotal} size="lg" className="text-amber-600" />
             </KpiCard>
             <KpiCard title="Ganancia">
               <MoneyDisplay amount={report.profit} size="lg" className="text-emerald-600" />
@@ -156,7 +174,7 @@ export function ReportsPage(): React.JSX.Element {
 
           <div className="grid gap-6 lg:grid-cols-2">
             <ReportTable
-              title="Productos más vendidos"
+              title="Productos más vendidos (neto)"
               empty="Sin ventas en el período"
               headers={['Producto', 'Cant.', 'Total']}
               rows={report.topProducts.map((p) => [
@@ -167,19 +185,20 @@ export function ReportsPage(): React.JSX.Element {
             />
 
             <ReportTable
-              title={`Anulaciones (${report.voidedCount}) — ${report.voidedTotal > 0 ? '' : ''}`}
+              title={`Anulaciones (${report.voidedCount})`}
               empty="Sin anulaciones"
-              headers={['Ticket', 'Fecha', 'Motivo', 'Total']}
+              headers={['Ticket', 'Anulada', 'Motivo', 'Total']}
               rows={report.voidedSales.map((s) => [
                 s.ticketNumber,
-                formatDateTime(s.createdAt),
+                s.voidedAt ? formatDateTime(s.voidedAt) : '—',
                 s.voidReason ?? '—',
                 <MoneyDisplay key="t" amount={s.total} size="sm" />
               ])}
               footer={
                 report.voidedTotal > 0 ? (
-                  <p className="px-4 py-2 text-sm">
-                    Total anulado: <MoneyDisplay amount={report.voidedTotal} size="sm" className="inline" />
+                  <p className="px-4 py-2 text-sm text-[rgb(var(--text-muted))]">
+                    Total anulado (no cuenta en ingresos):{' '}
+                    <MoneyDisplay amount={report.voidedTotal} size="sm" className="inline" />
                   </p>
                 ) : null
               }
@@ -188,73 +207,93 @@ export function ReportsPage(): React.JSX.Element {
 
           <section className="mt-6 overflow-hidden rounded-xl border border-surface-border">
             <div className="border-b border-surface-border bg-surface-elevated px-4 py-3">
-              <h3 className="font-medium">Historial de ventas ({report.sales.length})</h3>
+              <h3 className="font-medium">Historial de ventas ({report.allSales.length})</h3>
+              <p className="text-xs text-[rgb(var(--text-muted))]">
+                Completadas y anuladas · Las anuladas no suman en ingresos
+              </p>
             </div>
-            <div className="max-h-[420px] overflow-y-auto">
+            <div className="max-h-[480px] overflow-y-auto">
               <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-surface-elevated">
                   <tr className="border-b border-surface-border text-left">
+                    <th className="px-4 py-2 font-medium">Estado</th>
                     <th className="px-4 py-2 font-medium">Ticket</th>
                     <th className="px-4 py-2 font-medium">Fecha</th>
-                    <th className="px-4 py-2 font-medium">Ítems</th>
-                    <th className="px-4 py-2 font-medium text-right">Total</th>
-                    <th className="px-4 py-2 font-medium text-right">Acción</th>
+                    <th className="px-4 py-2 font-medium text-right">Total / Neto</th>
+                    <th className="px-4 py-2 font-medium text-right">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {report.sales.length === 0 ? (
+                  {report.allSales.length === 0 ? (
                     <tr>
                       <td colSpan={5} className="px-4 py-8 text-center text-[rgb(var(--text-muted))]">
                         Sin ventas en el período
                       </td>
                     </tr>
                   ) : (
-                    report.sales.map((s) => (
-                      <tr key={s.id} className="border-b border-surface-border/50">
+                    report.allSales.map((s) => (
+                      <tr
+                        key={s.id}
+                        className={[
+                          'border-b border-surface-border/50',
+                          s.status === 'voided'
+                            ? 'bg-red-500/5 line-through decoration-red-300/60'
+                            : 'hover:bg-surface-elevated/40'
+                        ].join(' ')}
+                      >
+                        <td className="px-4 py-2">
+                          <Badge variant={s.status === 'voided' ? 'warning' : 'success'}>
+                            {saleStatusLabel(s.status)}
+                          </Badge>
+                        </td>
                         <td className="px-4 py-2 font-mono">{s.ticketNumber}</td>
-                        <td className="px-4 py-2 text-[rgb(var(--text-muted))]">
-                          {formatDateTime(s.createdAt)}
-                        </td>
-                        <td className="px-4 py-2">{s.itemCount}</td>
-                        <td className="px-4 py-2 text-right">
-                          <MoneyDisplay amount={s.total} size="sm" />
-                        </td>
-                        <td className="px-4 py-2 text-right">
-                          {voidTargetId === s.id ? (
-                            <div className="flex items-center justify-end gap-2">
-                              <input
-                                className="w-32 rounded border border-surface-border px-2 py-1 text-xs"
-                                placeholder="Motivo"
-                                value={voidReason}
-                                onChange={(e) => setVoidReason(e.target.value)}
-                                autoFocus
-                              />
-                              <Button
-                                variant="secondary"
-                                type="button"
-                                onClick={() => void handleVoid(s.id)}
-                              >
-                                OK
-                              </Button>
-                              <button
-                                type="button"
-                                className="text-xs text-[rgb(var(--text-muted))]"
-                                onClick={() => setVoidTargetId(null)}
-                              >
-                                ✕
-                              </button>
+                        <td className="px-4 py-2">
+                          <div>{formatDateTime(s.createdAt)}</div>
+                          {s.status === 'voided' && s.voidedAt && (
+                            <div className="text-xs text-red-600/90 no-underline">
+                              Anulada: {formatDateTime(s.voidedAt)}
+                              {s.voidedByName ? ` · ${s.voidedByName}` : ''}
                             </div>
+                          )}
+                          {s.status === 'completed' && s.returnedTotal > 0 && (
+                            <div className="text-xs text-amber-600 no-underline">
+                              Devuelto: <MoneyDisplay amount={s.returnedTotal} size="sm" className="inline" />
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-2 text-right no-underline">
+                          {s.status === 'voided' ? (
+                            <MoneyDisplay amount={s.total} size="sm" />
                           ) : (
-                            <Button
-                              variant="ghost"
-                              type="button"
-                              onClick={() => {
-                                setVoidTargetId(s.id)
-                                setVoidReason('')
-                              }}
-                            >
-                              Anular
-                            </Button>
+                            <>
+                              <MoneyDisplay amount={s.netTotal} size="sm" />
+                              {s.returnedTotal > 0 && (
+                                <div className="text-xs text-[rgb(var(--text-muted))]">
+                                  Bruto{' '}
+                                  <MoneyDisplay amount={s.total} size="sm" className="inline" />
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </td>
+                        <td className="px-4 py-2 text-right no-underline">
+                          {s.status === 'completed' && (
+                            <div className="flex justify-end gap-1">
+                              <Button
+                                variant="ghost"
+                                type="button"
+                                onClick={() => setReturnTarget(s)}
+                              >
+                                Devolver
+                              </Button>
+                              <Button
+                                variant="danger"
+                                type="button"
+                                onClick={() => setVoidTarget(s)}
+                              >
+                                Anular
+                              </Button>
+                            </div>
                           )}
                         </td>
                       </tr>
@@ -266,6 +305,23 @@ export function ReportsPage(): React.JSX.Element {
           </section>
         </>
       ) : null}
+
+      <VoidSaleModal
+        open={!!voidTarget}
+        sale={voidTarget}
+        onClose={() => setVoidTarget(null)}
+        onConfirm={handleVoidConfirm}
+      />
+
+      <ReturnSaleModal
+        open={!!returnTarget}
+        sale={returnTarget}
+        onClose={() => setReturnTarget(null)}
+        onSaved={() => {
+          setMessage('Devolución registrada')
+          void load()
+        }}
+      />
     </div>
   )
 }

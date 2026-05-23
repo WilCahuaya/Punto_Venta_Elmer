@@ -21,7 +21,9 @@ import {
   listMovements,
   listSessionHistory,
   sumMovements,
+  sumReturnsInSession,
   sumSales,
+  sumSalesGross,
   sumSalesProfit,
   type CashMovementRow,
   type CashSessionRow
@@ -61,15 +63,21 @@ function buildSummary(row: CashSessionRow): CashSessionSummary {
   const opening = fromMoneyDb(row.opening_amount)
   const totalIncome = sumMovements(db, row.id, 'income')
   const totalExpense = sumMovements(db, row.id, 'expense')
-  const totalSales = sumSales(db, row.id)
+  const totalSalesGross = sumSalesGross(db, row.id)
+  const totalReturns = sumReturnsInSession(db, row.id)
+  const totalSalesNet = sumSales(db, row.id)
   const salesProfit = sumSalesProfit(db, row.id)
-  const expectedInDrawer = roundMoney(opening + totalIncome - totalExpense + totalSales)
+  const expectedInDrawer = roundMoney(
+    opening + totalIncome - totalExpense + totalSalesNet
+  )
 
   return {
     ...mapSession(row),
     totalIncome: roundMoney(totalIncome),
     totalExpense: roundMoney(totalExpense),
-    totalSales: roundMoney(totalSales),
+    totalSalesGross: roundMoney(totalSalesGross),
+    totalReturns: roundMoney(totalReturns),
+    totalSales: roundMoney(totalSalesNet),
     salesProfit: roundMoney(salesProfit),
     expectedInDrawer
   }

@@ -10,7 +10,7 @@ import type {
   CloseCashInput,
   OpenCashInput
 } from '@shared/types/cash'
-import type { CreateSaleInput } from '@shared/types/sales'
+import type { CreateSaleInput, PartialReturnInput } from '@shared/types/sales'
 import type {
   AdjustStockInput,
   CategoryInput,
@@ -79,6 +79,11 @@ const api = {
   sales: {
     create: (input: CreateSaleInput) => ipcRenderer.invoke(IPC_CHANNELS.SALES_CREATE, input),
     printTicket: (saleId: number) => ipcRenderer.invoke(IPC_CHANNELS.SALES_PRINT_TICKET, saleId),
+    listBySession: (sessionId: number) =>
+      ipcRenderer.invoke(IPC_CHANNELS.SALES_LIST_BY_SESSION, sessionId),
+    getDetail: (id: number) => ipcRenderer.invoke(IPC_CHANNELS.SALES_GET_DETAIL, id),
+    partialReturn: (input: PartialReturnInput) =>
+      ipcRenderer.invoke(IPC_CHANNELS.SALES_PARTIAL_RETURN, input),
     void: (input: VoidSaleInput) => ipcRenderer.invoke(IPC_CHANNELS.SALES_VOID, input),
     lookupBarcode: (barcode: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.PRODUCTS_LOOKUP, barcode),

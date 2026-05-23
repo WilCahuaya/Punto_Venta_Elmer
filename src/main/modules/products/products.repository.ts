@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3'
 import type { ProductListFilters } from '@shared/types/catalog'
+import { systemServiceExcludeSql } from './system-product'
 
 export interface ProductRow {
   id: number
@@ -31,7 +32,7 @@ const SELECT_FIELDS = `
 `
 
 export function listProducts(db: Database.Database, filters: ProductListFilters): ProductRow[] {
-  const conditions: string[] = []
+  const conditions: string[] = [systemServiceExcludeSql('p')]
   const params: unknown[] = []
 
   if (!filters.includeInactive) {
@@ -92,7 +93,8 @@ export function searchProductsPos(db: Database.Database, query: string, limit = 
       `SELECT ${SELECT_FIELDS}
        FROM products p
        LEFT JOIN categories c ON c.id = p.category_id
-       WHERE p.is_active = 1 AND (p.name LIKE ? OR p.barcode LIKE ? OR p.product_code LIKE ?)
+       WHERE p.is_active = 1 AND ${systemServiceExcludeSql('p')}
+         AND (p.name LIKE ? OR p.barcode LIKE ? OR p.product_code LIKE ?)
        ORDER BY p.name ASC
        LIMIT ?`
     )
@@ -237,6 +239,20 @@ export function updateProductImagePath(db: Database.Database, id: number, imageP
 
 export function softDeleteProduct(db: Database.Database, id: number): void {
   db.prepare(`UPDATE products SET is_active = 0, updated_at = datetime('now') WHERE id = ?`).run(id)
+}
+
+export function countSaleItemsForProduct(db: Database.Database, productId: number): number {
+  const row = db
+    .prepare('SELECT COUNT(*) AS c FROM sale_items WHERE product_id = ?')
+    .get(productId) as { c: number }
+  return row.c
+}
+
+export function hardDeleteProduct(db: Database.Database, id: number): boolean {
+  const result = db
+    .prepare('DELETE FROM products WHERE id = ? AND is_active = 0')
+    .run(id)
+  return result.changes > 0
 }
 
 export function countLowStockProducts(db: Database.Database): number {

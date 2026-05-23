@@ -3,7 +3,7 @@ PRAGMA foreign_keys = OFF;
 
 CREATE TABLE categories_new (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  parent_id INTEGER REFERENCES categories(id),
+  parent_id INTEGER REFERENCES categories_new(id),
   name TEXT NOT NULL,
   description TEXT,
   is_active INTEGER NOT NULL DEFAULT 1,

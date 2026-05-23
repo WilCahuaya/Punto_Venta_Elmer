@@ -33,6 +33,7 @@ export function PaymentModal({
   }, [open, total])
 
   const change = roundMoney(Math.max(0, paid - total))
+  const quickAmounts = [10, 20, 50, 100, 200].filter((bill) => bill > total)
 
   async function handleSubmit(e: FormEvent): Promise<void> {
     e.preventDefault()
@@ -89,14 +90,14 @@ export function PaymentModal({
         </div>
 
         <div className="flex flex-wrap gap-2">
-          {[10, 20, 50, 100, 200].map((bill) => (
+          {quickAmounts.map((bill) => (
             <Button
               key={bill}
               type="button"
               variant="secondary"
-              onClick={() => setPaid((p) => roundMoney(p + bill))}
+              onClick={() => setPaid(roundMoney(bill))}
             >
-              +{bill}
+              {bill}
             </Button>
           ))}
           <Button type="button" variant="ghost" onClick={() => setPaid(total)}>

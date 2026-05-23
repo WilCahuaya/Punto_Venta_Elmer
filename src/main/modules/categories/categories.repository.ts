@@ -134,6 +134,27 @@ export function countProductsInCategory(db: Database.Database, categoryId: numbe
   return row.c
 }
 
+export function countAllProductsInCategory(db: Database.Database, categoryId: number): number {
+  const row = db
+    .prepare('SELECT COUNT(*) AS c FROM products WHERE category_id = ?')
+    .get(categoryId) as { c: number }
+  return row.c
+}
+
+export function countAllSubcategories(db: Database.Database, parentId: number): number {
+  const row = db
+    .prepare('SELECT COUNT(*) AS c FROM categories WHERE parent_id = ?')
+    .get(parentId) as { c: number }
+  return row.c
+}
+
+export function hardDeleteCategory(db: Database.Database, id: number): boolean {
+  const result = db
+    .prepare('DELETE FROM categories WHERE id = ? AND is_active = 0')
+    .run(id)
+  return result.changes > 0
+}
+
 export function countActiveSubcategories(db: Database.Database, parentId: number): number {
   const row = db
     .prepare('SELECT COUNT(*) AS c FROM categories WHERE parent_id = ? AND is_active = 1')

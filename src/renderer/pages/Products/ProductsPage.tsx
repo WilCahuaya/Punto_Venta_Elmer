@@ -98,9 +98,28 @@ export function ProductsPage(): React.JSX.Element {
     setModalOpen(true)
   }
 
-  async function handleDelete(p: Product): Promise<void> {
-    if (!confirm(`¿Desactivar el producto "${p.name}"?`)) return
-    const result = await window.api.products.delete(p.id)
+  async function handleDeactivate(p: Product): Promise<void> {
+    if (
+      !confirm(
+        `¿Desactivar el producto "${p.name}"?\n\nQuedará inactivo. Para borrarlo de la base de datos deberá eliminarlo después.`
+      )
+    ) {
+      return
+    }
+    const result = await window.api.products.deactivate(p.id)
+    if (!result.ok) alert(result.error)
+    else void loadProducts()
+  }
+
+  async function handleDestroy(p: Product): Promise<void> {
+    if (
+      !confirm(
+        `¿Eliminar definitivamente "${p.name}" de la base de datos?\n\nEsta acción no se puede deshacer.`
+      )
+    ) {
+      return
+    }
+    const result = await window.api.products.destroy(p.id)
     if (!result.ok) alert(result.error)
     else void loadProducts()
   }
@@ -262,9 +281,21 @@ export function ProductsPage(): React.JSX.Element {
                       <Button variant="ghost" type="button" onClick={() => openEdit(p)}>
                         Editar
                       </Button>
-                      {p.isActive && (
-                        <Button variant="ghost" type="button" onClick={() => void handleDelete(p)}>
+                      {p.isActive ? (
+                        <Button
+                          variant="ghost"
+                          type="button"
+                          onClick={() => void handleDeactivate(p)}
+                        >
                           Desactivar
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="danger"
+                          type="button"
+                          onClick={() => void handleDestroy(p)}
+                        >
+                          Eliminar
                         </Button>
                       )}
                     </div>

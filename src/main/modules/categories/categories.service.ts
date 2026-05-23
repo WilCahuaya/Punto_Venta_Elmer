@@ -3,8 +3,11 @@ import type { Category, CategoryInput, CategoryListFilters } from '@shared/types
 import { getDatabase } from '../../database/connection'
 import {
   countActiveSubcategories,
+  countAllProductsInCategory,
+  countAllSubcategories,
   countProductsInCategory,
   getCategoryById,
+  hardDeleteCategory,
   getCategoryByNameAndParent,
   insertCategory,
   listCategories,
@@ -115,16 +118,20 @@ export function updateCategoryService(id: number, input: CategoryInput): ApiResu
   return getCategoryService(id)
 }
 
-export function deleteCategoryService(id: number): ApiResult<null> {
+/** Desactiva la categoría (paso previo a eliminarla de la base de datos). */
+export function deactivateCategoryService(id: number): ApiResult<null> {
   const db = getDatabase()
   const existing = getCategoryById(db, id)
   if (!existing) return { ok: false, error: 'Categoría no encontrada' }
+  if (existing.is_active === 0) {
+    return { ok: false, error: 'La categoría ya está inactiva' }
+  }
 
   const activeProducts = countProductsInCategory(db, id)
   if (activeProducts > 0) {
     return {
       ok: false,
-      error: `No se puede eliminar: tiene ${activeProducts} producto(s) activo(s)`
+      error: `No se puede desactivar: tiene ${activeProducts} producto(s) activo(s). Desactívelos primero.`
     }
   }
 
@@ -132,10 +139,44 @@ export function deleteCategoryService(id: number): ApiResult<null> {
   if (subs > 0) {
     return {
       ok: false,
-      error: `No se puede eliminar: tiene ${subs} subcategoría(s) activa(s)`
+      error: `No se puede desactivar: tiene ${subs} subcategoría(s) activa(s). Desactívelas primero.`
     }
   }
 
   softDeleteCategory(db, id)
+  return { ok: true, data: null }
+}
+
+/** Elimina la categoría de la base de datos (solo si ya está inactiva). */
+export function destroyCategoryService(id: number): ApiResult<null> {
+  const db = getDatabase()
+  const existing = getCategoryById(db, id)
+  if (!existing) return { ok: false, error: 'Categoría no encontrada' }
+  if (existing.is_active === 1) {
+    return {
+      ok: false,
+      error: 'Primero debe desactivar la categoría antes de eliminarla de la base de datos'
+    }
+  }
+
+  const products = countAllProductsInCategory(db, id)
+  if (products > 0) {
+    return {
+      ok: false,
+      error: `No se puede eliminar: aún hay ${products} producto(s) asociado(s)`
+    }
+  }
+
+  const subs = countAllSubcategories(db, id)
+  if (subs > 0) {
+    return {
+      ok: false,
+      error: `No se puede eliminar: aún hay ${subs} subcategoría(s) asociada(s)`
+    }
+  }
+
+  if (!hardDeleteCategory(db, id)) {
+    return { ok: false, error: 'No se pudo eliminar la categoría' }
+  }
   return { ok: true, data: null }
 }

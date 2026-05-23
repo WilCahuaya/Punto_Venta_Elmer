@@ -1,4 +1,29 @@
 import type Database from 'better-sqlite3'
+import {
+  deriveBarcodeFromCatalog,
+  resolveUniqueBarcode
+} from '@shared/lib/product-barcode'
+
+function getCategoryName(db: Database.Database, categoryId: number | null): string {
+  if (categoryId == null) return ''
+  const row = db.prepare('SELECT name FROM categories WHERE id = ?').get(categoryId) as
+    | { name: string }
+    | undefined
+  return row?.name ?? ''
+}
+
+export function generateBarcodeForProduct(
+  db: Database.Database,
+  categoryId: number | null,
+  productName: string
+): string {
+  const categoryName = getCategoryName(db, categoryId)
+  const base = deriveBarcodeFromCatalog(categoryName, productName)
+  const isTaken = (code: string) =>
+    !!db.prepare('SELECT id FROM products WHERE barcode = ?').get(code)
+  if (base) return resolveUniqueBarcode(base, isTaken)
+  return generateCandidateBarcode(db)
+}
 
 export function generateCandidateBarcode(db: Database.Database): string {
   for (let i = 0; i < 50; i++) {

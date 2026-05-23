@@ -37,9 +37,28 @@ export function CategoriesPage(): React.JSX.Element {
     setModalOpen(true)
   }
 
-  async function handleDelete(cat: Category): Promise<void> {
-    if (!confirm(`¿Desactivar "${cat.name}"?`)) return
-    const result = await window.api.categories.delete(cat.id)
+  async function handleDeactivate(cat: Category): Promise<void> {
+    if (
+      !confirm(
+        `¿Desactivar la categoría "${cat.name}"?\n\nDebe no tener productos ni subcategorías activas. Luego podrá eliminarla de la base de datos.`
+      )
+    ) {
+      return
+    }
+    const result = await window.api.categories.deactivate(cat.id)
+    if (!result.ok) alert(result.error)
+    else void load()
+  }
+
+  async function handleDestroy(cat: Category): Promise<void> {
+    if (
+      !confirm(
+        `¿Eliminar definitivamente "${cat.name}" de la base de datos?\n\nEsta acción no se puede deshacer.`
+      )
+    ) {
+      return
+    }
+    const result = await window.api.categories.destroy(cat.id)
     if (!result.ok) alert(result.error)
     else void load()
   }
@@ -142,9 +161,21 @@ export function CategoriesPage(): React.JSX.Element {
                       <Button variant="ghost" type="button" onClick={() => openEdit(cat)}>
                         Editar
                       </Button>
-                      {cat.isActive && (
-                        <Button variant="ghost" type="button" onClick={() => void handleDelete(cat)}>
+                      {cat.isActive ? (
+                        <Button
+                          variant="ghost"
+                          type="button"
+                          onClick={() => void handleDeactivate(cat)}
+                        >
                           Desactivar
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="danger"
+                          type="button"
+                          onClick={() => void handleDestroy(cat)}
+                        >
+                          Eliminar
                         </Button>
                       )}
                     </div>

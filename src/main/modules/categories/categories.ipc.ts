@@ -3,7 +3,8 @@ import { IPC_CHANNELS } from '@shared/constants/ipc'
 import type { CategoryInput, CategoryListFilters } from '@shared/types/catalog'
 import {
   createCategoryService,
-  deleteCategoryService,
+  deactivateCategoryService,
+  destroyCategoryService,
   getCategoryService,
   listCategoriesService,
   updateCategoryService
@@ -20,5 +21,10 @@ export function registerCategoriesIpc(): void {
   ipcMain.handle(IPC_CHANNELS.CATEGORIES_UPDATE, (_e, id: number, input: CategoryInput) =>
     updateCategoryService(id, input)
   )
-  ipcMain.handle(IPC_CHANNELS.CATEGORIES_DELETE, (_e, id: number) => deleteCategoryService(id))
+  ipcMain.handle(IPC_CHANNELS.CATEGORIES_DEACTIVATE, (_e, id: number) =>
+    deactivateCategoryService(id)
+  )
+  ipcMain.handle(IPC_CHANNELS.CATEGORIES_DESTROY, (_e, id: number) =>
+    destroyCategoryService(id)
+  )
 }

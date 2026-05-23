@@ -17,13 +17,24 @@ interface PosState {
     unitPrice: number,
     priceLabel: string
   ) => void
+  addServiceLine: (
+    productId: number,
+    description: string,
+    unitPrice: number
+  ) => void
   updateQuantity: (key: string, quantity: number) => void
   removeLine: (key: string) => void
   clearCart: () => void
   setDiscount: (discount: number) => void
   getSubtotal: () => number
   getTotal: () => number
-  toSaleItems: () => { productId: number; quantity: number; unitPrice: number }[]
+  toSaleItems: () => {
+    productId: number
+    quantity: number
+    unitPrice: number
+    displayName?: string
+    isFreeService?: boolean
+  }[]
 }
 
 function lineKey(productId: number, unitPrice: number): string {
@@ -38,7 +49,7 @@ export const usePosStore = create<PosState>((set, get) => ({
     const price = roundMoney(unitPrice)
     const key = lineKey(product.id, price)
     set((s) => {
-      const existing = s.lines.find((l) => l.key === key)
+      const existing = s.lines.find((l) => l.key === key && !l.isService)
       if (existing) {
         const newQty = existing.quantity + quantity
         if (newQty > product.stock) return s
@@ -68,11 +79,38 @@ export const usePosStore = create<PosState>((set, get) => ({
             costPrice: product.costPrice,
             maxStock: product.stock,
             lineTotal: roundMoney(quantity * price),
-            priceLabel
+            priceLabel,
+            isService: false
           }
         ]
       }
     })
+  },
+
+  addServiceLine: (productId, description, unitPrice) => {
+    const price = roundMoney(unitPrice)
+    const name = description.trim()
+    if (!name || price <= 0) return
+
+    const key = `service-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    set((s) => ({
+      lines: [
+        ...s.lines,
+        {
+          key,
+          productId,
+          name,
+          barcode: null,
+          quantity: 1,
+          unitPrice: price,
+          costPrice: 0,
+          maxStock: Number.MAX_SAFE_INTEGER,
+          lineTotal: price,
+          priceLabel: 'Servicio',
+          isService: true
+        }
+      ]
+    }))
   },
 
   updateQuantity: (key, quantity) => {
@@ -84,6 +122,7 @@ export const usePosStore = create<PosState>((set, get) => ({
       lines: s.lines
         .map((l) => {
           if (l.key !== key) return l
+          if (l.isService) return l
           if (quantity > l.maxStock) return l
           return {
             ...l,
@@ -109,6 +148,8 @@ export const usePosStore = create<PosState>((set, get) => ({
     get().lines.map((l) => ({
       productId: l.productId,
       quantity: l.quantity,
-      unitPrice: l.unitPrice
+      unitPrice: l.unitPrice,
+      displayName: l.isService ? l.name : undefined,
+      isFreeService: l.isService
     }))
 }))

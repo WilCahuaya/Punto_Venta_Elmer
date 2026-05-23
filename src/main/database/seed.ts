@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3'
+import { ensureSystemServiceProduct } from '../modules/products/system-product'
 import { hashPassword } from '../utils/crypto'
 
 const DEFAULT_USER = 'admin'
@@ -43,6 +44,8 @@ export function seedDatabase(database: Database.Database): void {
        ON CONFLICT(key) DO UPDATE SET value = excluded.value`
     )
     .run('001_init')
+
+  ensureSystemServiceProduct(database)
 }
 
 export function getDefaultCredentials(): { username: string; password: string } {

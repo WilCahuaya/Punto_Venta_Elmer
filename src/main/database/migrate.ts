@@ -23,15 +23,21 @@ export function runMigrations(database: Database.Database): void {
     .filter((f) => f.endsWith('.sql'))
     .sort()
 
-  const apply = database.transaction((version: string, sql: string) => {
-    database.exec(sql)
-    database.prepare('INSERT INTO schema_migrations (version) VALUES (?)').run(version)
-  })
-
   for (const file of files) {
     const version = file.replace('.sql', '')
     if (applied.has(version)) continue
     const sql = readFileSync(join(dir, file), 'utf-8')
-    apply(version, sql)
+
+    // PRAGMA foreign_keys dentro de una transacción no surte efecto si ya estaba ON
+    // al abrirla (comportamiento de SQLite). Desactivar FK antes de ejecutar el SQL.
+    const fkWasOn = database.pragma('foreign_keys', { simple: true }) === 1
+    if (fkWasOn) database.pragma('foreign_keys = OFF')
+
+    try {
+      database.exec(sql)
+      database.prepare('INSERT INTO schema_migrations (version) VALUES (?)').run(version)
+    } finally {
+      if (fkWasOn) database.pragma('foreign_keys = ON')
+    }
   }
 }

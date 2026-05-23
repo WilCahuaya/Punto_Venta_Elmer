@@ -7,6 +7,7 @@ import { Input } from '../../components/ui/Input'
 import { MoneyDisplay } from '../../components/ui/MoneyDisplay'
 import { PaymentModal } from '../../features/pos/PaymentModal'
 import { QuantityModal } from '../../features/pos/QuantityModal'
+import { ServiceModal } from '../../features/pos/ServiceModal'
 import { playErrorSound, playScanSound, playSuccessSound } from '../../lib/sounds'
 import { usePosStore } from '../../stores/pos.store'
 import { useCashStore } from '../../stores/cash.store'
@@ -21,6 +22,7 @@ export function PosPage(): React.JSX.Element {
   const lines = usePosStore((s) => s.lines)
   const discount = usePosStore((s) => s.discount)
   const addProduct = usePosStore((s) => s.addProduct)
+  const addServiceLine = usePosStore((s) => s.addServiceLine)
   const updateQuantity = usePosStore((s) => s.updateQuantity)
   const removeLine = usePosStore((s) => s.removeLine)
   const clearCart = usePosStore((s) => s.clearCart)
@@ -36,6 +38,8 @@ export function PosPage(): React.JSX.Element {
   const [searching, setSearching] = useState(false)
   const [qtyProduct, setQtyProduct] = useState<ReturnType<typeof productToPosProduct> | null>(null)
   const [paymentOpen, setPaymentOpen] = useState(false)
+  const [serviceOpen, setServiceOpen] = useState(false)
+  const [serviceProductId, setServiceProductId] = useState<number | null>(null)
   const [statusMsg, setStatusMsg] = useState<string | null>(null)
 
   const subtotal = getSubtotal()
@@ -47,7 +51,14 @@ export function PosPage(): React.JSX.Element {
 
   useEffect(() => {
     if (isOpen) focusBarcode()
-  }, [isOpen, focusBarcode, qtyProduct, paymentOpen])
+  }, [isOpen, focusBarcode, qtyProduct, paymentOpen, serviceOpen])
+
+  useEffect(() => {
+    if (!isOpen) return
+    void window.api.products.getSystemServiceProduct().then((res) => {
+      if (res.ok) setServiceProductId(res.data.productId)
+    })
+  }, [isOpen])
 
   useEffect(() => {
     if (!searchQuery.trim()) {
@@ -101,6 +112,17 @@ export function PosPage(): React.JSX.Element {
       if (code) void resolveProduct('barcode', code)
       setBarcodeBuffer('')
     }
+  }
+
+  function handleServiceConfirm(description: string, amount: number): void {
+    if (serviceProductId == null) {
+      setStatusMsg('Servicio no disponible. Reinicie la aplicación.')
+      if (soundsEnabled) playErrorSound()
+      return
+    }
+    addServiceLine(serviceProductId, description, amount)
+    if (soundsEnabled) playScanSound()
+    focusBarcode()
   }
 
   function handleConfirmQty(quantity: number, unitPrice: number, priceLabel: string): void {
@@ -159,6 +181,10 @@ export function PosPage(): React.JSX.Element {
         e.preventDefault()
         if (lines.length && confirm('¿Vaciar carrito?')) clearCart()
       }
+      if (e.key === 'F7') {
+        e.preventDefault()
+        setServiceOpen(true)
+      }
       if (e.key === 'F12') {
         e.preventDefault()
         if (lines.length) setPaymentOpen(true)
@@ -212,6 +238,9 @@ export function PosPage(): React.JSX.Element {
 
       <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-5">
         <div className="flex flex-col gap-3 lg:col-span-2">
+          <Button type="button" variant="secondary" onClick={() => setServiceOpen(true)}>
+            Servicio libre (F7)
+          </Button>
           <Input
             ref={searchRef}
             label="Búsqueda manual"
@@ -303,17 +332,21 @@ export function PosPage(): React.JSX.Element {
                           )}
                         </div>
                       </td>
-                      <td className="px-3 py-2">
-                        <input
-                          type="number"
-                          min={1}
-                          max={line.maxStock}
-                          value={line.quantity}
-                          onChange={(e) =>
-                            updateQuantity(line.key, Number(e.target.value))
-                          }
-                          className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-center tabular-nums"
-                        />
+                      <td className="px-3 py-2 text-center tabular-nums">
+                        {line.isService ? (
+                          <span className="text-[rgb(var(--text-muted))]">1</span>
+                        ) : (
+                          <input
+                            type="number"
+                            min={1}
+                            max={line.maxStock}
+                            value={line.quantity}
+                            onChange={(e) =>
+                              updateQuantity(line.key, Number(e.target.value))
+                            }
+                            className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-center tabular-nums"
+                          />
+                        )}
                       </td>
                       <td className="px-3 py-2 text-right">
                         <MoneyDisplay amount={line.unitPrice} size="sm" />
@@ -374,6 +407,15 @@ export function PosPage(): React.JSX.Element {
           focusBarcode()
         }}
         onConfirm={handleConfirmQty}
+      />
+
+      <ServiceModal
+        open={serviceOpen}
+        onClose={() => {
+          setServiceOpen(false)
+          focusBarcode()
+        }}
+        onConfirm={handleServiceConfirm}
       />
 
       <PaymentModal

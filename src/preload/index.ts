@@ -43,7 +43,8 @@ const api = {
     create: (input: CategoryInput) => ipcRenderer.invoke(IPC_CHANNELS.CATEGORIES_CREATE, input),
     update: (id: number, input: CategoryInput) =>
       ipcRenderer.invoke(IPC_CHANNELS.CATEGORIES_UPDATE, id, input),
-    delete: (id: number) => ipcRenderer.invoke(IPC_CHANNELS.CATEGORIES_DELETE, id)
+    deactivate: (id: number) => ipcRenderer.invoke(IPC_CHANNELS.CATEGORIES_DEACTIVATE, id),
+    destroy: (id: number) => ipcRenderer.invoke(IPC_CHANNELS.CATEGORIES_DESTROY, id)
   },
   products: {
     list: (filters?: ProductListFilters) =>
@@ -52,14 +53,16 @@ const api = {
     create: (input: ProductInput) => ipcRenderer.invoke(IPC_CHANNELS.PRODUCTS_CREATE, input),
     update: (id: number, input: ProductInput) =>
       ipcRenderer.invoke(IPC_CHANNELS.PRODUCTS_UPDATE, id, input),
-    delete: (id: number) => ipcRenderer.invoke(IPC_CHANNELS.PRODUCTS_DELETE, id),
+    deactivate: (id: number) => ipcRenderer.invoke(IPC_CHANNELS.PRODUCTS_DEACTIVATE, id),
+    destroy: (id: number) => ipcRenderer.invoke(IPC_CHANNELS.PRODUCTS_DESTROY, id),
     pickImage: () => ipcRenderer.invoke(IPC_CHANNELS.PRODUCTS_PICK_IMAGE),
     imageUrl: (relativePath: string | null) =>
       ipcRenderer.invoke(IPC_CHANNELS.PRODUCTS_IMAGE_URL, relativePath),
     lookupBarcode: (barcode: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.PRODUCTS_LOOKUP, barcode),
     adjustStock: (input: AdjustStockInput) =>
-      ipcRenderer.invoke(IPC_CHANNELS.PRODUCTS_ADJUST_STOCK, input)
+      ipcRenderer.invoke(IPC_CHANNELS.PRODUCTS_ADJUST_STOCK, input),
+    getSystemServiceProduct: () => ipcRenderer.invoke(IPC_CHANNELS.PRODUCTS_SYSTEM_SERVICE)
   },
   cash: {
     getCurrent: () => ipcRenderer.invoke(IPC_CHANNELS.CASH_GET_CURRENT),
@@ -78,7 +81,7 @@ const api = {
     printTicket: (saleId: number) => ipcRenderer.invoke(IPC_CHANNELS.SALES_PRINT_TICKET, saleId),
     void: (input: VoidSaleInput) => ipcRenderer.invoke(IPC_CHANNELS.SALES_VOID, input),
     lookupBarcode: (barcode: string) =>
-      ipcRenderer.invoke(IPC_CHANNELS.PRODUCTS_LOOKUP_BARCODE, barcode),
+      ipcRenderer.invoke(IPC_CHANNELS.PRODUCTS_LOOKUP, barcode),
     searchProducts: (query: string) => ipcRenderer.invoke(IPC_CHANNELS.PRODUCTS_SEARCH_POS, query)
   },
   dashboard: {

@@ -12,7 +12,7 @@ import {
   pickImageFile,
   storeProductImage
 } from '../../services/image.service'
-import { generateCandidateBarcode, generateProductCode } from '../../utils/barcode'
+import { generateBarcodeForProduct, generateProductCode } from '../../utils/barcode'
 import { toMoneyDb } from '../../utils/money-db'
 import {
   getProductByBarcode,
@@ -22,12 +22,15 @@ import {
   insertProduct,
   listProducts,
   searchProductsPos,
+  countSaleItemsForProduct,
+  hardDeleteProduct,
   softDeleteProduct,
   updateProduct,
   updateProductImagePath,
   updateProductStock
 } from './products.repository'
 import { mapProductRow } from './products.mapper'
+import { ensureSystemServiceProduct } from './system-product'
 
 function normalizeBarcode(barcode?: string | null): string | null {
   const v = barcode?.trim()
@@ -41,10 +44,21 @@ function normalizeProductCode(code?: string | null): string | null {
 
 function validateProductInput(input: ProductInput, isUpdate = false): string | null {
   if (!input.name?.trim()) return 'El nombre es obligatorio'
-  if (input.priceRetail == null || input.priceRetail < 0) {
-    return 'El precio normal es obligatorio y no puede ser negativo'
+  if (input.categoryId == null || input.categoryId <= 0) {
+    return 'La categoría es obligatoria'
+  }
+  const cost = input.costPrice ?? 0
+  if (cost < 0) return 'El precio de compra no puede ser negativo'
+  if (!isUpdate && cost <= 0) {
+    return 'El precio de compra es obligatorio y debe ser mayor a cero'
+  }
+  if (input.priceRetail == null || input.priceRetail <= 0) {
+    return 'El precio por menor es obligatorio y debe ser mayor a cero'
   }
   const wholesale = input.priceWholesale
+  if (!isUpdate && (wholesale == null || wholesale <= 0)) {
+    return 'El precio por mayor es obligatorio y debe ser mayor a cero'
+  }
   if (wholesale != null && wholesale < 0) return 'El precio por mayor no puede ser negativo'
   if ((input.stock ?? 0) < 0 || (input.stockMin ?? 0) < 0) {
     return 'El stock no puede ser negativo'
@@ -135,16 +149,13 @@ export function createProductService(input: ProductInput): ApiResult<Product> {
 
   let barcode = normalizeBarcode(input.barcode)
   if (!barcode && !input.skipAutoBarcode) {
-    barcode = generateCandidateBarcode(db)
+    barcode = generateBarcodeForProduct(db, input.categoryId ?? null, input.name)
   }
   if (barcode && getProductByBarcode(db, barcode)) {
     return { ok: false, error: 'El código de barras ya está registrado' }
   }
 
-  let productCode = normalizeProductCode(input.productCode)
-  if (!productCode) {
-    productCode = generateProductCode(db)
-  }
+  const productCode = generateProductCode(db)
   if (getProductByCode(db, productCode)) {
     return { ok: false, error: 'El código de producto ya está registrado' }
   }
@@ -207,12 +218,43 @@ export function updateProductService(id: number, input: ProductInput): ApiResult
   return getProductService(id)
 }
 
-export function deleteProductService(id: number): ApiResult<null> {
+/** Desactiva el producto (paso previo a eliminarlo de la base de datos). */
+export function deactivateProductService(id: number): ApiResult<null> {
   const db = getDatabase()
   const existing = getProductById(db, id)
   if (!existing) return { ok: false, error: 'Producto no encontrado' }
+  if (existing.is_active === 0) {
+    return { ok: false, error: 'El producto ya está inactivo' }
+  }
 
   softDeleteProduct(db, id)
+  return { ok: true, data: null }
+}
+
+/** Elimina el producto de la base de datos (solo si ya está inactivo). */
+export function destroyProductService(id: number): ApiResult<null> {
+  const db = getDatabase()
+  const existing = getProductById(db, id)
+  if (!existing) return { ok: false, error: 'Producto no encontrado' }
+  if (existing.is_active === 1) {
+    return {
+      ok: false,
+      error: 'Primero debe desactivar el producto antes de eliminarlo de la base de datos'
+    }
+  }
+
+  const sales = countSaleItemsForProduct(db, id)
+  if (sales > 0) {
+    return {
+      ok: false,
+      error: `No se puede eliminar: el producto tiene ${sales} venta(s) registrada(s)`
+    }
+  }
+
+  deleteImageIfExists(existing.image_path)
+  if (!hardDeleteProduct(db, id)) {
+    return { ok: false, error: 'No se pudo eliminar el producto' }
+  }
   return { ok: true, data: null }
 }
 
@@ -230,4 +272,10 @@ export function searchProductsPosService(query: string): ApiResult<Product[]> {
   const db = getDatabase()
   const rows = searchProductsPos(db, query.trim())
   return { ok: true, data: rows.map(mapProductRow) }
+}
+
+export function getSystemServiceProductService(): ApiResult<{ productId: number }> {
+  const db = getDatabase()
+  const id = ensureSystemServiceProduct(db)
+  return { ok: true, data: { productId: id } }
 }

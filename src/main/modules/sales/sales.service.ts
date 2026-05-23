@@ -4,8 +4,8 @@ import { roundMoney } from '@shared/lib/currency'
 import { getDatabase } from '../../database/connection'
 import { getOpenSession } from '../cash/cash.repository'
 import { getCurrentUserId } from '../auth/auth.service'
-import { getProductById, getProductByBarcodeRow } from '../products/products.repository'
-import { mapProductRow } from '../products/products.mapper'
+import { getProductById } from '../products/products.repository'
+import { isSystemServiceProductId } from '../products/system-product'
 import { fromMoneyDb, toMoneyDb } from '../../utils/money-db'
 import {
   decrementStock,
@@ -70,28 +70,51 @@ export function createSaleService(input: CreateSaleInput): ApiResult<Sale> {
     unitPrice: number
     lineTotal: number
     costPrice: number
+    skipStock: boolean
   }[] = []
 
   for (const item of input.items) {
     if (item.quantity <= 0) return { ok: false, error: 'Cantidad inválida' }
     const product = getProductById(db, item.productId)
-    if (!product || product.is_active !== 1) {
+    if (!product) {
       return { ok: false, error: `Producto #${item.productId} no disponible` }
     }
-    if (product.stock < item.quantity) {
+
+    const isService =
+      item.isFreeService === true && isSystemServiceProductId(db, item.productId)
+    if (!isService && product.is_active !== 1) {
+      return { ok: false, error: `Producto #${item.productId} no disponible` }
+    }
+    if (!isService && product.stock < item.quantity) {
       return { ok: false, error: `Stock insuficiente: ${product.name}` }
     }
+
+    const displayName = item.displayName?.trim()
+    if (isService && !displayName) {
+      return { ok: false, error: 'El nombre del servicio es obligatorio' }
+    }
+
     const unitPrice = roundMoney(item.unitPrice)
+    if (unitPrice <= 0) {
+      return {
+        ok: false,
+        error: isService
+          ? 'El monto del servicio debe ser mayor a cero'
+          : 'El precio de venta debe ser mayor a cero'
+      }
+    }
+
     const lineTotal = roundMoney(unitPrice * item.quantity)
     subtotal += lineTotal
     lineData.push({
       productId: product.id,
-      productName: product.name,
-      barcode: product.barcode,
+      productName: isService ? displayName! : product.name,
+      barcode: isService ? null : product.barcode,
       quantity: item.quantity,
       unitPrice,
       lineTotal,
-      costPrice: fromMoneyDb(product.cost_price)
+      costPrice: isService ? 0 : fromMoneyDb(product.cost_price),
+      skipStock: isService
     })
   }
 
@@ -121,8 +144,10 @@ export function createSaleService(input: CreateSaleInput): ApiResult<Sale> {
       })
 
       for (const line of lineData) {
-        const ok = decrementStock(db, line.productId, line.quantity)
-        if (!ok) throw new Error(`Stock insuficiente: ${line.productName}`)
+        if (!line.skipStock) {
+          const ok = decrementStock(db, line.productId, line.quantity)
+          if (!ok) throw new Error(`Stock insuficiente: ${line.productName}`)
+        }
         insertSaleItem(db, {
           saleId,
           productId: line.productId,
@@ -168,7 +193,9 @@ export function voidSaleService(saleId: number, reason: string): ApiResult<Sale>
     db.transaction(() => {
       const items = getSaleItems(db, saleId)
       for (const item of items) {
-        restoreStock(db, item.product_id, item.quantity)
+        if (!isSystemServiceProductId(db, item.product_id)) {
+          restoreStock(db, item.product_id, item.quantity)
+        }
       }
       voidSaleRecord(db, saleId, reason.trim())
       const after = getSaleById(db, saleId)
@@ -178,13 +205,4 @@ export function voidSaleService(saleId: number, reason: string): ApiResult<Sale>
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'Error al anular venta' }
   }
-}
-
-export function lookupBarcodeForPos(barcode: string): ApiResult<ReturnType<typeof mapProductRow>> {
-  const code = barcode.trim()
-  if (!code) return { ok: false, error: 'Código vacío' }
-  const db = getDatabase()
-  const row = getProductByBarcodeRow(db, code)
-  if (!row) return { ok: false, error: 'Producto no encontrado' }
-  return { ok: true, data: mapProductRow(row) }
 }

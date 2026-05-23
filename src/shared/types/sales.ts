@@ -27,12 +27,18 @@ export interface CartLine {
   maxStock: number
   lineTotal: number
   priceLabel: string
+  /** Venta de servicio libre (sin stock). */
+  isService?: boolean
 }
 
 export interface SaleItemInput {
   productId: number
   quantity: number
   unitPrice: number
+  /** Nombre mostrado en ticket (servicio libre). */
+  displayName?: string
+  /** No valida ni descuenta stock. */
+  isFreeService?: boolean
 }
 
 export interface CreateSaleInput {

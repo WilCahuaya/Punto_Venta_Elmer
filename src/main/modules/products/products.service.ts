@@ -12,6 +12,7 @@ import {
   pickImageFile,
   storeProductImage
 } from '../../services/image.service'
+import { normalizeScannedBarcode } from '@shared/lib/product-barcode'
 import { generateBarcodeForProduct, generateProductCode } from '../../utils/barcode'
 import { toMoneyDb } from '../../utils/money-db'
 import {
@@ -34,7 +35,8 @@ import { ensureSystemServiceProduct } from './system-product'
 
 function normalizeBarcode(barcode?: string | null): string | null {
   const v = barcode?.trim()
-  return v ? v : null
+  if (!v) return null
+  return normalizeScannedBarcode(v)
 }
 
 function normalizeProductCode(code?: string | null): string | null {
@@ -124,12 +126,20 @@ export function getProductService(id: number): ApiResult<Product> {
 }
 
 export function lookupProductByBarcodeService(barcode: string): ApiResult<Product> {
-  const code = barcode.trim()
-  if (!code) return { ok: false, error: 'Código vacío' }
+  const raw = barcode.trim()
+  if (!raw) return { ok: false, error: 'Código vacío' }
+
+  const candidates = [raw]
+  const normalized = normalizeScannedBarcode(raw)
+  if (normalized !== raw) candidates.push(normalized)
+
   const db = getDatabase()
-  const row = getProductByBarcodeRow(db, code)
-  if (!row) return { ok: false, error: 'Producto no encontrado' }
-  return { ok: true, data: mapProductRow(row) }
+  for (const code of candidates) {
+    const row = getProductByBarcodeRow(db, code)
+    if (row) return { ok: true, data: mapProductRow(row) }
+  }
+
+  return { ok: false, error: 'Producto no encontrado' }
 }
 
 export function adjustStockService(input: AdjustStockInput): ApiResult<Product> {
@@ -137,6 +147,12 @@ export function adjustStockService(input: AdjustStockInput): ApiResult<Product> 
   const db = getDatabase()
   const existing = getProductById(db, input.productId)
   if (!existing) return { ok: false, error: 'Producto no encontrado' }
+  if (input.stock < existing.stock) {
+    return {
+      ok: false,
+      error: `No puede reducir el stock por debajo del actual (${existing.stock})`
+    }
+  }
   updateProductStock(db, input.productId, input.stock)
   return getProductService(input.productId)
 }

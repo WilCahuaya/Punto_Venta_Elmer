@@ -52,6 +52,18 @@ export function deriveBarcodeFromCatalog(
   return `${prefix}-${seq}`
 }
 
+/**
+ * Corrige lecturas de escáner en modo teclado cuando el layout del PC
+ * no coincide con el del lector (ej. guiones impresos como LA-LA-6551
+ * llegan como LA'LA'6551 en Windows en español).
+ */
+export function normalizeScannedBarcode(scanned: string): string {
+  return scanned
+    .trim()
+    .replace(/[''`´]/g, '-')
+    .replace(/-{2,}/g, '-')
+}
+
 export function resolveUniqueBarcode(
   base: string,
   isTaken: (code: string) => boolean

@@ -20,6 +20,12 @@ export function SettingsPage(): React.JSX.Element {
   const [companyAddress, setCompanyAddress] = useState(store.companyAddress)
   const [printerTicket, setPrinterTicket] = useState(store.printerTicket)
   const [printerLabels, setPrinterLabels] = useState(store.printerLabels)
+  const [printerPaperWidth, setPrinterPaperWidth] = useState<'58mm' | '80mm'>(
+    store.printerPaperWidth
+  )
+  const [ticketLogoWidthPercent, setTicketLogoWidthPercent] = useState(
+    store.ticketLogoWidthPercent
+  )
 
   const [printers, setPrinters] = useState<PrinterInfo[]>([])
   const [detecting, setDetecting] = useState(false)
@@ -35,6 +41,8 @@ export function SettingsPage(): React.JSX.Element {
     setCompanyAddress(store.companyAddress)
     setPrinterTicket(store.printerTicket)
     setPrinterLabels(store.printerLabels)
+    setPrinterPaperWidth(store.printerPaperWidth)
+    setTicketLogoWidthPercent(store.ticketLogoWidthPercent)
   }, [store])
 
   useEffect(() => {
@@ -91,6 +99,8 @@ export function SettingsPage(): React.JSX.Element {
     setError(null)
     const saveFirst = await store.save({
       printerTicket,
+      printerPaperWidth,
+      ticketLogoWidthPercent,
       companyName,
       companyAddress,
       currencySymbol
@@ -115,7 +125,9 @@ export function SettingsPage(): React.JSX.Element {
       companyName,
       companyAddress,
       printerTicket,
-      printerLabels
+      printerLabels,
+      printerPaperWidth,
+      ticketLogoWidthPercent
     })
     setSaving(false)
     if (!result.ok) {
@@ -164,13 +176,42 @@ export function SettingsPage(): React.JSX.Element {
             />
             <div>
               <p className="mb-2 text-sm font-medium">Logo (ticket)</p>
-              <div className="flex h-28 items-center justify-center rounded-lg border border-dashed border-surface-border bg-surface/50">
+              <p className="mb-2 text-xs text-[rgb(var(--text-muted))]">
+                Vista previa al ancho del rollo ({printerPaperWidth}). Ajuste el tamaño si se
+                corta al imprimir.
+              </p>
+              <div
+                className="mx-auto rounded-lg border border-dashed border-surface-border bg-white px-2 py-3 dark:bg-zinc-900"
+                style={{ width: printerPaperWidth === '80mm' ? 302 : 219, maxWidth: '100%' }}
+              >
                 {logoUrl ? (
-                  <img src={logoUrl} alt="Logo" className="max-h-full max-w-full object-contain" />
+                  <img
+                    src={logoUrl}
+                    alt="Logo en ticket"
+                    className="mx-auto block h-auto object-contain"
+                    style={{
+                      width: `${ticketLogoWidthPercent}%`,
+                      maxHeight: printerPaperWidth === '80mm' ? 72 : 56
+                    }}
+                  />
                 ) : (
-                  <span className="text-xs text-[rgb(var(--text-muted))]">Sin logo</span>
+                  <p className="py-6 text-center text-xs text-[rgb(var(--text-muted))]">
+                    Sin logo
+                  </p>
                 )}
               </div>
+              <label className="mt-3 block text-sm font-medium">
+                Tamaño del logo en ticket: {ticketLogoWidthPercent}%
+                <input
+                  type="range"
+                  min={40}
+                  max={100}
+                  step={5}
+                  value={ticketLogoWidthPercent}
+                  onChange={(e) => setTicketLogoWidthPercent(Number(e.target.value))}
+                  className="mt-2 w-full accent-brand"
+                />
+              </label>
               <div className="mt-2 flex gap-2">
                 <Button type="button" variant="secondary" onClick={() => void handlePickLogo()}>
                   Elegir logo
@@ -210,9 +251,18 @@ export function SettingsPage(): React.JSX.Element {
               onChange={setPrinterLabels}
               options={printerOptions}
             />
+            <Select
+              label="Ancho de papel térmico"
+              value={printerPaperWidth}
+              onChange={(v) => setPrinterPaperWidth(v === '80mm' ? '80mm' : '58mm')}
+              options={[
+                { value: '58mm', label: '58 mm (rollo pequeño)' },
+                { value: '80mm', label: '80 mm (rollo ancho)' }
+              ]}
+            />
             <p className="text-xs text-[rgb(var(--text-muted))]">
-              Las etiquetas se configurarán en la Fase 6. Deje vacío para usar la impresora
-              predeterminada de Windows.
+              Use la impresora térmica configurada en Windows. Si imprime muchas hojas, verifique
+              que el ancho coincida con su rollo y no use impresora láser A4 para tickets.
             </p>
             <Button type="button" variant="secondary" onClick={() => void handleTestPrint()}>
               Imprimir ticket de prueba

@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Category, Product } from '@shared/types/catalog'
+import { normalizeScannedBarcode } from '@shared/lib/product-barcode'
 import { Badge } from '../../components/ui/Badge'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { MoneyDisplay } from '../../components/ui/MoneyDisplay'
 import { Select } from '../../components/ui/Select'
 import { ProductFormModal } from '../../features/products/ProductFormModal'
+import { ScanCreatePromptModal } from '../../features/products/ScanCreatePromptModal'
+import { ScanStockSuccessModal } from '../../features/products/ScanStockSuccessModal'
 import { StockAdjustModal } from '../../features/products/StockAdjustModal'
 import { useProductImage } from '../../hooks/useProductImage'
 import { buildCategorySelectOptions } from '../../lib/category-options'
@@ -34,7 +37,13 @@ export function ProductsPage(): React.JSX.Element {
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Product | null>(null)
   const [stockProduct, setStockProduct] = useState<Product | null>(null)
+  const [createBarcode, setCreateBarcode] = useState<string | undefined>(undefined)
   const [scanMsg, setScanMsg] = useState<string | null>(null)
+  const [scanCreatePrompt, setScanCreatePrompt] = useState<string | null>(null)
+  const [scanStockSuccess, setScanStockSuccess] = useState<{
+    product: Product
+    previousStock: number
+  } | null>(null)
 
   const scannerRef = useRef<HTMLInputElement>(null)
   const [scanBuffer, setScanBuffer] = useState('')
@@ -65,19 +74,45 @@ export function ProductsPage(): React.JSX.Element {
   }, [loadProducts])
 
   useEffect(() => {
+    if (modalOpen || stockProduct || scanCreatePrompt || scanStockSuccess) return
     scannerRef.current?.focus()
-  }, [modalOpen, stockProduct])
+  }, [modalOpen, stockProduct, scanCreatePrompt, scanStockSuccess])
 
   async function handleScannerEnter(code: string): Promise<void> {
-    const trimmed = code.trim()
+    const trimmed = normalizeScannedBarcode(code.trim())
     if (!trimmed) return
     setScanMsg(null)
     const res = await window.api.products.lookupBarcode(trimmed)
     if (!res.ok) {
-      setScanMsg(res.error)
+      setScanCreatePrompt(trimmed)
       return
     }
-    setStockProduct(res.data)
+
+    const previousStock = res.data.stock
+    const adjust = await window.api.products.adjustStock({
+      productId: res.data.id,
+      stock: previousStock + 1
+    })
+    if (!adjust.ok) {
+      setScanMsg(adjust.error)
+      return
+    }
+    setScanStockSuccess({ product: adjust.data, previousStock })
+    void loadProducts()
+  }
+
+  function handleScanCreateConfirm(): void {
+    if (!scanCreatePrompt) return
+    setEditing(null)
+    setCreateBarcode(scanCreatePrompt)
+    setScanCreatePrompt(null)
+    setModalOpen(true)
+  }
+
+  function openCreate(): void {
+    setEditing(null)
+    setCreateBarcode(undefined)
+    setModalOpen(true)
   }
 
   function handleScanKeyDown(e: React.KeyboardEvent<HTMLInputElement>): void {
@@ -86,11 +121,6 @@ export function ProductsPage(): React.JSX.Element {
       void handleScannerEnter(scanBuffer)
       setScanBuffer('')
     }
-  }
-
-  function openCreate(): void {
-    setEditing(null)
-    setModalOpen(true)
   }
 
   function openEdit(p: Product): void {
@@ -144,7 +174,7 @@ export function ProductsPage(): React.JSX.Element {
 
       <div className="mb-4 rounded-xl border border-brand/30 bg-brand/5 p-3">
         <label className="mb-1 block text-xs font-medium text-[rgb(var(--text-muted))]">
-          Lector de barras — ajustar stock
+          Lector de barras — escanee para sumar stock o registrar producto nuevo
         </label>
         <input
           ref={scannerRef}
@@ -152,7 +182,7 @@ export function ProductsPage(): React.JSX.Element {
           value={scanBuffer}
           onChange={(e) => setScanBuffer(e.target.value)}
           onKeyDown={handleScanKeyDown}
-          placeholder="Escanee un producto para editar su stock"
+          placeholder="Escanee el código de barras del producto"
           autoComplete="off"
           className="w-full rounded-lg border border-surface-border bg-surface-elevated px-3 py-2 font-mono text-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
         />
@@ -307,11 +337,39 @@ export function ProductsPage(): React.JSX.Element {
         </table>
       </div>
 
+      <ScanCreatePromptModal
+        open={!!scanCreatePrompt}
+        barcode={scanCreatePrompt ?? ''}
+        onClose={() => {
+          setScanCreatePrompt(null)
+          setScanBuffer('')
+        }}
+        onCreate={handleScanCreateConfirm}
+      />
+
+      <ScanStockSuccessModal
+        open={!!scanStockSuccess}
+        product={scanStockSuccess?.product ?? null}
+        previousStock={scanStockSuccess?.previousStock ?? 0}
+        onClose={() => {
+          setScanStockSuccess(null)
+          setScanBuffer('')
+        }}
+        onAdjustMore={() => {
+          if (scanStockSuccess) setStockProduct(scanStockSuccess.product)
+          setScanStockSuccess(null)
+        }}
+      />
+
       <ProductFormModal
         open={modalOpen}
         product={editing}
         categories={categories}
-        onClose={() => setModalOpen(false)}
+        initialBarcode={createBarcode}
+        onClose={() => {
+          setModalOpen(false)
+          setCreateBarcode(undefined)
+        }}
         onSaved={() => void loadProducts()}
       />
 

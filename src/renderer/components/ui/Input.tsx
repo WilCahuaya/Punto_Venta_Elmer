@@ -7,7 +7,7 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
-  { label, error, className = '', id, ...props },
+  { label, error, className = '', id, required, ...props },
   ref
 ): React.JSX.Element {
   const inputId = id ?? label?.toLowerCase().replace(/\s/g, '-')
@@ -15,11 +15,15 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   return (
     <label className="flex flex-col gap-1.5 text-sm">
       {label && (
-        <span className="font-medium text-[rgb(var(--text))]">{label}</span>
+        <span className="font-medium text-[rgb(var(--text))]">
+          {label}
+          {required && <span className="text-red-500"> *</span>}
+        </span>
       )}
       <input
         ref={ref}
         id={inputId}
+        required={required}
         className={[
           'rounded-lg border border-surface-border bg-surface-elevated px-3 py-2.5',
           'text-[rgb(var(--text))] placeholder:text-[rgb(var(--text-muted))]',

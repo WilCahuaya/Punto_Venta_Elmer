@@ -23,6 +23,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   companyLogoPath: null,
   printerTicket: '',
   printerLabels: '',
+  printerPaperWidth: '58mm',
+  ticketLogoWidthPercent: 65,
   hydrated: false,
 
   applyFromServer: (data) => {
@@ -44,7 +46,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       companyName: input.companyName,
       companyAddress: input.companyAddress,
       printerTicket: input.printerTicket,
-      printerLabels: input.printerLabels
+      printerLabels: input.printerLabels,
+      printerPaperWidth: input.printerPaperWidth,
+      ticketLogoWidthPercent: input.ticketLogoWidthPercent
     })
     if (!result.ok) return { ok: false, error: result.error }
     get().applyFromServer(result.data)

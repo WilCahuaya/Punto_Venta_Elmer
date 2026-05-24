@@ -11,6 +11,7 @@ import { CURRENCY_DECIMALS } from '@shared/lib/currency'
 import { getDatabase } from '../../database/connection'
 import { ensureImagesDir, getImageMediaUrl, pickImageFile } from '../../services/image.service'
 import { resolveImagePath } from '../../utils/paths'
+import { parseTicketLogoWidthPercent } from '../../services/ticket-logo'
 import { printTestTicket } from '../../services/printer.service'
 
 const ALLOWED_KEYS = new Set([
@@ -22,6 +23,8 @@ const ALLOWED_KEYS = new Set([
   'company_logo_path',
   'printer_ticket',
   'printer_labels',
+  'printer_paper_width',
+  'ticket_logo_width_percent',
   'backup_auto_enabled',
   'backup_retention_days'
 ])
@@ -41,7 +44,9 @@ function mapSettings(map: Record<string, string>): AppSettingsFull {
     companyAddress: map.company_address ?? '',
     companyLogoPath: map.company_logo_path || null,
     printerTicket: map.printer_ticket ?? '',
-    printerLabels: map.printer_labels ?? ''
+    printerLabels: map.printer_labels ?? '',
+    printerPaperWidth: map.printer_paper_width === '80mm' ? '80mm' : '58mm',
+    ticketLogoWidthPercent: parseTicketLogoWidthPercent(map.ticket_logo_width_percent)
   }
 }
 
@@ -82,6 +87,20 @@ export function updateSettings(input: SettingsUpdateInput): ApiResult<AppSetting
   if (input.companyAddress !== undefined) upsertSetting(db, 'company_address', input.companyAddress.trim())
   if (input.printerTicket !== undefined) upsertSetting(db, 'printer_ticket', input.printerTicket)
   if (input.printerLabels !== undefined) upsertSetting(db, 'printer_labels', input.printerLabels)
+  if (input.printerPaperWidth !== undefined) {
+    upsertSetting(
+      db,
+      'printer_paper_width',
+      input.printerPaperWidth === '80mm' ? '80mm' : '58mm'
+    )
+  }
+  if (input.ticketLogoWidthPercent !== undefined) {
+    upsertSetting(
+      db,
+      'ticket_logo_width_percent',
+      String(parseTicketLogoWidthPercent(String(input.ticketLogoWidthPercent)))
+    )
+  }
 
   return getSettings()
 }

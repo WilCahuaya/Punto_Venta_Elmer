@@ -5,6 +5,16 @@ export interface BarcodeOptions {
   height?: number
   fontSize?: number
   displayValue?: boolean
+  margin?: number
+}
+
+/** Solo barras (el número se imprime aparte, más grande y legible). */
+export const LABEL_BARCODE_OPTIONS: BarcodeOptions = {
+  width: 2,
+  height: 58,
+  fontSize: 6,
+  displayValue: false,
+  margin: 0
 }
 
 /** Genera PNG en base64 (sin prefijo data:) para impresión. */
@@ -20,8 +30,9 @@ export async function barcodeToBase64(
     height: options.height ?? 50,
     fontSize: options.fontSize ?? 14,
     displayValue: options.displayValue ?? true,
-    margin: 4,
-    textMargin: 2
+    margin: options.margin ?? 4,
+    textMargin: 0,
+    lineColor: '#000000'
   })
 
   const serializer = new XMLSerializer()
@@ -58,7 +69,9 @@ export function renderBarcodeSvg(
     height: options?.height ?? 60,
     fontSize: options?.fontSize ?? 14,
     displayValue: options?.displayValue ?? true,
-    margin: 6
+    margin: options?.margin ?? 6,
+    textMargin: 0,
+    lineColor: '#000000'
   })
 }
 

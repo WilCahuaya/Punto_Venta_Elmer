@@ -17,6 +17,10 @@ export interface AppSettingsFull {
   companyLogoPath: string | null
   printerTicket: string
   printerLabels: string
+  /** Ancho de rollo térmico: 58mm o 80mm. */
+  printerPaperWidth: '58mm' | '80mm'
+  /** Ancho del logo en ticket (% del ancho útil del rollo, 40–100). */
+  ticketLogoWidthPercent: number
 }
 
 export interface SettingsUpdateInput {
@@ -27,4 +31,6 @@ export interface SettingsUpdateInput {
   companyAddress?: string
   printerTicket?: string
   printerLabels?: string
+  printerPaperWidth?: '58mm' | '80mm'
+  ticketLogoWidthPercent?: number
 }

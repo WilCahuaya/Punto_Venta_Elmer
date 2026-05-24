@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react'
 import type { Category, Product, ProductInput } from '@shared/types/catalog'
-import { deriveBarcodeFromCatalog } from '@shared/lib/product-barcode'
+import { deriveBarcodeFromCatalog, normalizeScannedBarcode } from '@shared/lib/product-barcode'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { Modal } from '../../components/ui/Modal'
@@ -13,6 +13,8 @@ interface ProductFormModalProps {
   open: boolean
   product: Product | null
   categories: Category[]
+  /** Código escaneado al crear desde el lector (modo híbrido). */
+  initialBarcode?: string
   onClose: () => void
   onSaved: () => void
 }
@@ -56,6 +58,7 @@ export function ProductFormModal({
   open,
   product,
   categories,
+  initialBarcode,
   onClose,
   onSaved
 }: ProductFormModalProps): React.JSX.Element {
@@ -67,6 +70,7 @@ export function ProductFormModal({
     costPrice?: string
     priceRetail?: string
     priceWholesale?: string
+    stockMin?: string
   }>({})
   const [saving, setSaving] = useState(false)
   const [pendingImagePath, setPendingImagePath] = useState<string | null>(null)
@@ -75,6 +79,8 @@ export function ProductFormModal({
 
   const storedImageUrl = useProductImage(product?.imagePath)
   const isCreate = !product
+  const isScannedCreate = isCreate && Boolean(initialBarcode?.trim())
+  const isManualCreate = isCreate && !isScannedCreate
 
   useEffect(() => {
     if (!open) return
@@ -94,6 +100,11 @@ export function ProductFormModal({
         priceWholesale: product.priceWholesale,
         isActive: product.isActive
       })
+    } else if (initialBarcode?.trim()) {
+      setForm({
+        ...defaultForm(),
+        barcode: normalizeScannedBarcode(initialBarcode.trim())
+      })
     } else {
       setForm(defaultForm())
     }
@@ -102,14 +113,14 @@ export function ProductFormModal({
     setRemoveImage(false)
     setError(null)
     setFieldErrors({})
-  }, [open, product])
+  }, [open, product, initialBarcode])
 
   useEffect(() => {
-    if (!open || product) return
+    if (!open || !isManualCreate) return
     const category = categories.find((c) => c.id === form.categoryId)
     const preview = deriveBarcodeFromCatalog(category?.name ?? '', form.name)
     setForm((f) => (f.barcode === preview ? f : { ...f, barcode: preview }))
-  }, [open, product, form.categoryId, form.name, categories])
+  }, [open, isManualCreate, form.categoryId, form.name, categories])
 
   async function handlePickImage(): Promise<void> {
     const result = await window.api.products.pickImage()
@@ -135,8 +146,11 @@ export function ProductFormModal({
     }
     if (isCreate && (form.priceWholesale == null || form.priceWholesale <= 0)) {
       next.priceWholesale = 'El precio por mayor es obligatorio'
-    } else if (form.priceWholesale != null && form.priceWholesale < 0) {
+    } else     if (form.priceWholesale != null && form.priceWholesale < 0) {
       next.priceWholesale = 'El precio por mayor no puede ser negativo'
+    }
+    if ((form.stockMin ?? 0) > (form.stock ?? 0)) {
+      next.stockMin = 'El stock mínimo no puede ser mayor que el stock actual'
     }
     setFieldErrors(next)
     return Object.keys(next).length === 0
@@ -146,23 +160,36 @@ export function ProductFormModal({
     e.preventDefault()
     if (!validateForm()) return
 
+    const normalizedBarcode = form.barcode?.trim()
+      ? normalizeScannedBarcode(form.barcode.trim())
+      : null
+
+    if (isScannedCreate && normalizedBarcode) {
+      const dup = await window.api.products.lookupBarcode(normalizedBarcode)
+      if (dup.ok) {
+        setError(`El código ya está registrado en "${dup.data.name}"`)
+        return
+      }
+    }
+
     setSaving(true)
     setError(null)
 
     const payload: ProductInput = {
       ...form,
       productCode: null,
-      barcode: form.barcode?.trim() || null,
+      barcode: normalizedBarcode,
       categoryId: form.categoryId ? Number(form.categoryId) : null,
-      brand: form.brand || null,
-      size: form.size || null,
-      color: form.color || null,
-      description: form.description || null,
+      brand: form.brand?.trim() || null,
+      size: form.size?.trim() || null,
+      color: form.color?.trim() || null,
+      description: form.description?.trim() || null,
       priceWholesale:
         form.priceWholesale != null && form.priceWholesale > 0 ? form.priceWholesale : null,
+      stockMin: form.stockMin ?? 0,
       pendingImagePath,
       removeImage,
-      skipAutoBarcode: false
+      skipAutoBarcode: isScannedCreate
     }
 
     const result = product
@@ -179,11 +206,16 @@ export function ProductFormModal({
   }
 
   const categoryOptions = buildCategorySelectOptions(categories)
+  const modalTitle = product
+    ? 'Editar producto'
+    : isScannedCreate
+      ? 'Nuevo producto — código escaneado'
+      : 'Nuevo producto'
 
   return (
     <Modal
       open={open}
-      title={product ? 'Editar producto' : 'Nuevo producto'}
+      title={modalTitle}
       onClose={onClose}
       size="xl"
       footer={
@@ -199,6 +231,12 @@ export function ProductFormModal({
     >
       <form id="product-form" onSubmit={(e) => void handleSubmit(e)} className="space-y-6">
         <FormSection title="Información básica">
+          {isScannedCreate && (
+            <div className="rounded-lg border border-brand/30 bg-brand/5 px-3 py-2 text-sm text-[rgb(var(--text-muted))]">
+              Código del empaque detectado. Complete nombre, categoría y precios.
+            </div>
+          )}
+
           <Input
             label="Nombre del producto"
             value={form.name}
@@ -207,6 +245,7 @@ export function ProductFormModal({
             error={fieldErrors.name}
             autoFocus
           />
+
           <Select
             label="Categoría"
             value={form.categoryId ? String(form.categoryId) : ''}
@@ -216,6 +255,7 @@ export function ProductFormModal({
             error={fieldErrors.categoryId}
             required
           />
+
           <div>
             <Input
               label="Código de barras"
@@ -226,13 +266,22 @@ export function ProductFormModal({
                   ? undefined
                   : (e) => setForm({ ...form, barcode: e.target.value })
               }
+              autoComplete="off"
+              className="font-mono"
+              placeholder={isManualCreate ? 'Se genera al completar nombre y categoría' : ''}
             />
-            {isCreate && (
+            {isManualCreate && (
               <p className="mt-1 text-xs text-[rgb(var(--text-muted))]">
-                Iniciales de categoría y producto (ej. RH-CP-3847)
+                Se genera automáticamente con iniciales de categoría y producto (ej. RH-CP-3847)
+              </p>
+            )}
+            {isScannedCreate && (
+              <p className="mt-1 text-xs text-[rgb(var(--text-muted))]">
+                Código del producto escaneado (no editable)
               </p>
             )}
           </div>
+
           {product?.productCode && (
             <p className="text-xs text-[rgb(var(--text-muted))]">
               Código interno: <span className="font-mono">{product.productCode}</span>
@@ -266,14 +315,24 @@ export function ProductFormModal({
               error={fieldErrors.priceWholesale}
             />
             <Input
-              label="Stock"
+              label="Stock inicial"
               type="number"
               min={0}
               step="any"
               value={String(form.stock ?? 0)}
-              onChange={(e) => setForm({ ...form, stock: Number(e.target.value) })}
+              onChange={(e) => setForm({ ...form, stock: Number(e.target.value) || 0 })}
             />
           </div>
+          <Input
+            label="Stock mínimo (alerta)"
+            type="number"
+            min={0}
+            max={form.stock ?? 0}
+            step="any"
+            value={String(form.stockMin ?? 0)}
+            onChange={(e) => setForm({ ...form, stockMin: Number(e.target.value) || 0 })}
+            error={fieldErrors.stockMin}
+          />
         </FormSection>
 
         <FormSection title="Detalles opcionales">

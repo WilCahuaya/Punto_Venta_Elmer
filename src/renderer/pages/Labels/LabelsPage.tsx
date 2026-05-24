@@ -6,13 +6,16 @@ import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { MoneyDisplay } from '../../components/ui/MoneyDisplay'
 import { MoneyInput } from '../../components/ui/MoneyInput'
-import { barcodeToBase64, renderBarcodeSvg } from '../../lib/barcode'
+import { barcodeToBase64, LABEL_BARCODE_OPTIONS, renderBarcodeSvg } from '../../lib/barcode'
+import { formatMoney } from '@shared/lib/currency'
+import { useSettingsStore } from '../../stores/settings.store'
 
 interface QueueItem extends LabelPrintItem {
   id: string
 }
 
 export function LabelsPage(): React.JSX.Element {
+  const currencySymbol = useSettingsStore((s) => s.currencySymbol)
   const [queue, setQueue] = useState<QueueItem[]>([])
   const [search, setSearch] = useState('')
   const [products, setProducts] = useState<Product[]>([])
@@ -43,10 +46,18 @@ export function LabelsPage(): React.JSX.Element {
     return () => clearTimeout(t)
   }, [search])
 
+  const previewName = customName.trim() || selectedProduct?.name || 'Producto'
+  const previewPrice =
+    customPrice > 0
+      ? customPrice
+      : selectedProduct?.priceRetail && selectedProduct.priceRetail > 0
+        ? selectedProduct.priceRetail
+        : null
+
   useEffect(() => {
     if (!previewRef.current || !previewCode) return
     try {
-      renderBarcodeSvg(previewRef.current, previewCode)
+      renderBarcodeSvg(previewRef.current, previewCode, LABEL_BARCODE_OPTIONS)
     } catch {
       // código inválido para CODE128
     }
@@ -145,7 +156,7 @@ export function LabelsPage(): React.JSX.Element {
 
     try {
       for (const code of uniqueCodes) {
-        barcodeImages[code] = await barcodeToBase64(code)
+        barcodeImages[code] = await barcodeToBase64(code, LABEL_BARCODE_OPTIONS)
       }
     } catch (e) {
       setPrinting(false)
@@ -180,7 +191,7 @@ export function LabelsPage(): React.JSX.Element {
         <div>
           <h2 className="text-2xl font-semibold">Etiquetas</h2>
           <p className="text-sm text-[rgb(var(--text-muted))]">
-            Códigos de barras CODE128 · impresora de etiquetas en Configuración
+            Etiquetas autoadhesivas 50 × 25 mm · CODE128
           </p>
         </div>
         <div className="flex gap-2">
@@ -357,23 +368,50 @@ export function LabelsPage(): React.JSX.Element {
         </section>
       </div>
 
-      {/* Vista previa */}
+      {/* Vista previa 50 × 25 mm */}
       <section className="mt-6 rounded-xl border border-surface-border bg-surface-elevated p-6">
-        <h3 className="mb-4 font-medium">Vista previa</h3>
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-surface-border bg-white p-6 dark:bg-slate-900">
-          {previewCode ? (
-            <svg ref={previewRef} className="max-w-full" />
-          ) : (
-            <p className="text-sm text-[rgb(var(--text-muted))]">
-              Ingrese o genere un código para previsualizar
+        <h3 className="mb-1 font-medium">Vista previa — 50 × 25 mm</h3>
+        <p className="mb-4 text-xs text-[rgb(var(--text-muted))]">
+          Así se verá cada etiqueta al imprimir
+        </p>
+        <div className="flex justify-center">
+          <div
+            className="flex flex-col overflow-hidden rounded border border-surface-border bg-white px-1.5 py-1 text-black shadow-sm"
+            style={{ width: 200, height: 100 }}
+          >
+            <p
+              className={`line-clamp-2 text-center font-bold leading-tight ${
+                previewName.length > 32
+                  ? 'text-[5px]'
+                  : previewName.length > 18
+                    ? 'text-[6px]'
+                    : 'text-[7px]'
+              }`}
+              title={previewName}
+            >
+              {previewName}
             </p>
-          )}
+              {previewPrice != null && previewPrice > 0 && (
+                <p className="my-0.5 text-center text-[7px] font-extrabold">
+                  {formatMoney(previewPrice, currencySymbol)}
+                </p>
+              )}
+            <div className="flex min-h-0 flex-1 flex-col justify-end overflow-hidden">
+              <div className="flex items-end justify-center overflow-hidden">
+                {previewCode ? (
+                  <svg ref={previewRef} className="max-h-full max-w-full" />
+                ) : (
+                  <p className="text-[5px] text-neutral-400">Sin código</p>
+                )}
+              </div>
+              {previewCode ? (
+                <p className="truncate text-center font-mono text-[8px] font-bold leading-none tracking-wide">
+                  {previewCode}
+                </p>
+              ) : null}
+            </div>
+          </div>
         </div>
-        {previewCode && (
-          <p className="mt-2 text-center font-mono text-sm text-[rgb(var(--text-muted))]">
-            {previewCode}
-          </p>
-        )}
       </section>
     </div>
   )

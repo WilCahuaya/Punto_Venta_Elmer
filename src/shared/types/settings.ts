@@ -1,5 +1,7 @@
 import type { ThemeMode } from './api'
 
+import type { LabelDpi } from '@shared/lib/thermal-print'
+
 export interface PrinterInfo {
   name: string
   displayName: string
@@ -17,8 +19,15 @@ export interface AppSettingsFull {
   companyLogoPath: string | null
   printerTicket: string
   printerLabels: string
-  /** Ancho de rollo térmico: 58mm o 80mm. */
+  /** Ancho de rollo térmico para tickets: 58mm o 80mm. */
   printerPaperWidth: '58mm' | '80mm'
+  /** Preset de etiqueta autoadhesiva (50x25, custom, etc.). */
+  labelPreset: string
+  /** Ancho/alto etiqueta en mm (si preset = custom). */
+  labelWidthMm: number
+  labelHeightMm: number
+  /** DPI impresora de etiquetas (203 estándar, 300 alta resolución). */
+  labelDpi: LabelDpi
   /** Ancho del logo en ticket (% del ancho útil del rollo, 40–100). */
   ticketLogoWidthPercent: number
 }
@@ -32,5 +41,9 @@ export interface SettingsUpdateInput {
   printerTicket?: string
   printerLabels?: string
   printerPaperWidth?: '58mm' | '80mm'
+  labelPreset?: string
+  labelWidthMm?: number
+  labelHeightMm?: number
+  labelDpi?: LabelDpi
   ticketLogoWidthPercent?: number
 }

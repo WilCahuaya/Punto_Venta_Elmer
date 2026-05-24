@@ -8,6 +8,7 @@ import { MoneyDisplay } from '../../components/ui/MoneyDisplay'
 import { MoneyInput } from '../../components/ui/MoneyInput'
 import { barcodeToBase64, LABEL_BARCODE_OPTIONS, renderBarcodeSvg } from '../../lib/barcode'
 import { formatMoney } from '@shared/lib/currency'
+import { resolveLabelDimensions } from '@shared/lib/thermal-print'
 import { useSettingsStore } from '../../stores/settings.store'
 
 interface QueueItem extends LabelPrintItem {
@@ -16,6 +17,16 @@ interface QueueItem extends LabelPrintItem {
 
 export function LabelsPage(): React.JSX.Element {
   const currencySymbol = useSettingsStore((s) => s.currencySymbol)
+  const labelPreset = useSettingsStore((s) => s.labelPreset)
+  const labelWidthMm = useSettingsStore((s) => s.labelWidthMm)
+  const labelHeightMm = useSettingsStore((s) => s.labelHeightMm)
+  const labelDpi = useSettingsStore((s) => s.labelDpi)
+  const labelDims = resolveLabelDimensions({
+    presetId: labelPreset,
+    widthMm: labelWidthMm,
+    heightMm: labelHeightMm,
+    dpi: labelDpi
+  })
   const [queue, setQueue] = useState<QueueItem[]>([])
   const [search, setSearch] = useState('')
   const [products, setProducts] = useState<Product[]>([])
@@ -191,7 +202,7 @@ export function LabelsPage(): React.JSX.Element {
         <div>
           <h2 className="text-2xl font-semibold">Etiquetas</h2>
           <p className="text-sm text-[rgb(var(--text-muted))]">
-            Etiquetas autoadhesivas 50 × 25 mm · CODE128
+            Etiquetas autoadhesivas {labelDims.widthMm} × {labelDims.heightMm} mm · CODE128
           </p>
         </div>
         <div className="flex gap-2">
@@ -370,7 +381,9 @@ export function LabelsPage(): React.JSX.Element {
 
       {/* Vista previa 50 × 25 mm */}
       <section className="mt-6 rounded-xl border border-surface-border bg-surface-elevated p-6">
-        <h3 className="mb-1 font-medium">Vista previa — 50 × 25 mm</h3>
+        <h3 className="mb-1 font-medium">
+          Vista previa — {labelDims.widthMm} × {labelDims.heightMm} mm
+        </h3>
         <p className="mb-4 text-xs text-[rgb(var(--text-muted))]">
           Así se verá cada etiqueta al imprimir
         </p>

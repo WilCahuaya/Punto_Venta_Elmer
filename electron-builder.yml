@@ -2,16 +2,23 @@ appId: com.puntoventa.app
 productName: Punto de Venta
 directories:
   buildResources: resources
-  output: dist
+  output: release
 files:
   - '!**/.vscode/*'
   - '!src/*'
   - '!database/*'
+  - '!release/**'
+  - '!release-*/**'
+  - '!dist/**'
   - '!electron.vite.config.*'
   - '!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
 extraResources:
   - from: database
     to: database
 win:
+  icon: resources/icon.ico
+  signAndEditExecutable: false
   target:
     - nsis
+nsis:
+  deleteAppDataOnUninstall: true

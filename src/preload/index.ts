@@ -34,7 +34,8 @@ const api = {
     pickLogo: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_PICK_LOGO),
     removeLogo: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_REMOVE_LOGO),
     logoUrl: (path: string | null) => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_LOGO_URL, path),
-    testPrint: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_TEST_PRINT)
+    testPrint: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_TEST_PRINT),
+    testLabelPrint: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_TEST_LABEL_PRINT)
   },
   categories: {
     list: (filters?: CategoryListFilters) =>

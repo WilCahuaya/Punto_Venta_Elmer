@@ -4,19 +4,13 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
 import { pathToFileURL } from 'url'
-
-/** Etiqueta autoadhesiva 50 × 25 mm. */
-export const LABEL_50X25_MM = { width: 50, height: 25 } as const
-export const LABEL_50X25_MICRONS = { width: 50000, height: 25000 } as const
-const THERMAL_DPI = 203
-
-/** Ancho útil del código (~46 mm @ 203 DPI). */
-const BARCODE_MAX_WIDTH_PX = Math.round((48 / 25.4) * THERMAL_DPI)
-/** Con precio: ~14.5 mm solo barras (el número va aparte, pegado abajo). */
-const BARCODE_MAX_HEIGHT_WITH_PRICE_PX = Math.round((14.5 / 25.4) * THERMAL_DPI)
-/** Sin precio: ~17 mm solo barras. */
-const BARCODE_MAX_HEIGHT_NO_PRICE_PX = Math.round((17 / 25.4) * THERMAL_DPI)
-const BARCODE_MIN_HEIGHT_PX = Math.round((10 / 25.4) * THERMAL_DPI)
+import {
+  labelBarcodeBarsMaxMm,
+  labelBarcodeMaxWidthMm,
+  mmToMicrons,
+  type LabelDimensions
+} from '@shared/lib/thermal-print'
+import { resolvePrinterName } from './printer-resolve.service'
 
 export interface LabelPrintContent {
   companyName: string
@@ -38,45 +32,54 @@ function truncate(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text
 }
 
-/** Tamaño de fuente según largo del nombre (máx. 2 líneas en 50 mm). */
-function getNameSizeClass(name: string): 'size-lg' | 'size-md' | 'size-sm' {
+function getNameSizeClass(name: string, widthMm: number): 'size-lg' | 'size-md' | 'size-sm' {
   const len = name.trim().length
-  if (len <= 18) return 'size-lg'
-  if (len <= 32) return 'size-md'
+  const short = widthMm <= 35
+  if (len <= (short ? 14 : 18)) return 'size-lg'
+  if (len <= (short ? 24 : 32)) return 'size-md'
   return 'size-sm'
+}
+
+function nameFontSizes(widthMm: number): { lg: string; md: string; sm: string } {
+  if (widthMm <= 35) return { lg: '2.1mm', md: '1.85mm', sm: '1.6mm' }
+  if (widthMm >= 55) return { lg: '2.8mm', md: '2.3mm', sm: '2mm' }
+  return { lg: '2.5mm', md: '2.1mm', sm: '1.85mm' }
 }
 
 function prepareBarcodeImage(
   sourcePath: string,
+  dims: LabelDimensions,
   hasPrice: boolean
 ): { path: string; width: number; height: number } {
-  const maxHeight = hasPrice ? BARCODE_MAX_HEIGHT_WITH_PRICE_PX : BARCODE_MAX_HEIGHT_NO_PRICE_PX
+  const maxWidthPx = Math.round((labelBarcodeMaxWidthMm(dims.widthMm) / 25.4) * dims.dpi)
+  const maxHeightPx = Math.round((labelBarcodeBarsMaxMm(dims.heightMm, hasPrice) / 25.4) * dims.dpi)
+  const minHeightPx = Math.round((8 / 25.4) * dims.dpi)
+
   const img = nativeImage.createFromPath(sourcePath)
   if (img.isEmpty()) {
-    return { path: sourcePath, width: BARCODE_MAX_WIDTH_PX, height: 40 }
+    return { path: sourcePath, width: maxWidthPx, height: minHeightPx }
   }
 
   const { width: srcW, height: srcH } = img.getSize()
   let targetW = srcW
   let targetH = srcH
 
-  // Escalar hacia arriba hasta el alto útil (lectores necesitan barras altas).
-  if (targetH < maxHeight) {
-    targetH = maxHeight
+  if (targetH < maxHeightPx) {
+    targetH = maxHeightPx
     targetW = Math.max(1, Math.round((srcW * targetH) / srcH))
   }
 
-  if (targetW > BARCODE_MAX_WIDTH_PX) {
-    targetW = BARCODE_MAX_WIDTH_PX
-    targetH = Math.max(BARCODE_MIN_HEIGHT_PX, Math.round((srcH * targetW) / srcW))
+  if (targetW > maxWidthPx) {
+    targetW = maxWidthPx
+    targetH = Math.max(minHeightPx, Math.round((srcH * targetW) / srcW))
   }
 
-  if (targetH > maxHeight) {
-    targetH = maxHeight
+  if (targetH > maxHeightPx) {
+    targetH = maxHeightPx
     targetW = Math.max(1, Math.round((srcW * targetH) / srcH))
   }
 
-  targetH = Math.max(BARCODE_MIN_HEIGHT_PX, targetH)
+  targetH = Math.max(minHeightPx, targetH)
 
   const resized =
     targetW !== srcW || targetH !== srcH
@@ -98,17 +101,22 @@ function mmToScreenPx(mm: number): number {
   return Math.max(1, Math.round((mm / 25.4) * 96))
 }
 
-export function buildLabel50x25Html(
+export function buildLabelHtml(
   content: LabelPrintContent,
-  barcode: { path: string; width: number; height: number }
+  barcode: { path: string; width: number; height: number },
+  dims: LabelDimensions
 ): string {
+  const { widthMm, heightMm } = dims
   const imgSrc = pathToFileURL(barcode.path).href
   const rawName = content.productName.trim() || 'Producto'
   const name = escapeHtml(truncate(rawName, 80))
-  const nameClass = getNameSizeClass(rawName)
+  const nameClass = getNameSizeClass(rawName, widthMm)
+  const fonts = nameFontSizes(widthMm)
   const price = content.priceText ? escapeHtml(content.priceText) : ''
   const code = escapeHtml(content.barcodeCode.trim())
-  const barsMaxH = price ? '14.5mm' : '17mm'
+  const barsMaxH = `${labelBarcodeBarsMaxMm(heightMm, Boolean(price))}mm`
+  const barcodeMaxW = `${labelBarcodeMaxWidthMm(widthMm)}mm`
+  const codeFont = widthMm <= 35 ? '2.4mm' : '2.8mm'
 
   return [
     '<!DOCTYPE html>',
@@ -116,89 +124,30 @@ export function buildLabel50x25Html(
     '<head>',
     '  <meta charset="utf-8">',
     '  <style>',
-    '    @page { size: 50mm 25mm; margin: 0; }',
+    `    @page { size: ${widthMm}mm ${heightMm}mm; margin: 0; }`,
     '    * { box-sizing: border-box; margin: 0; padding: 0; }',
-    '    html, body {',
-    '      width: 50mm;',
-    '      height: 25mm;',
-    '      overflow: hidden;',
-    '      background: #fff;',
-    '    }',
-    '    body {',
-    '      font-family: Arial, Helvetica, sans-serif;',
-    '      color: #000;',
-    '      -webkit-print-color-adjust: exact;',
-    '      print-color-adjust: exact;',
-    '    }',
-    '    .label {',
-    '      width: 50mm;',
-    '      height: 25mm;',
-    '      display: flex;',
-    '      flex-direction: column;',
-    '      align-items: stretch;',
-    '      padding: 0.8mm 1.5mm 0.3mm;',
-    '    }',
-    '    .name {',
-    '      text-align: center;',
-    '      font-weight: 700;',
-    '      line-height: 1.05;',
-    '      max-height: 4.8mm;',
-    '      overflow: hidden;',
-    '      display: -webkit-box;',
-    '      -webkit-line-clamp: 2;',
-    '      -webkit-box-orient: vertical;',
-    '      word-break: break-word;',
-    '      hyphens: auto;',
-    '    }',
-    '    .name.size-lg { font-size: 2.5mm; }',
-    '    .name.size-md { font-size: 2.1mm; }',
-    '    .name.size-sm { font-size: 1.85mm; }',
-    '    .price {',
-    '      text-align: center;',
-    '      font-size: 2.3mm;',
-    '      font-weight: 800;',
-    '      line-height: 1;',
-    '      margin: 0.15mm 0;',
-    '      white-space: nowrap;',
-    '    }',
-    '    .barcode-wrap {',
-    '      flex: 1;',
-    '      min-height: 0;',
-    '      display: flex;',
-    '      flex-direction: column;',
-    '      justify-content: flex-end;',
-    '      gap: 0;',
-    '      overflow: hidden;',
-    '    }',
-    '    .barcode-bars {',
-    '      display: flex;',
-    '      align-items: flex-end;',
-    '      justify-content: center;',
-    '      overflow: hidden;',
-    '    }',
-    '    .barcode-bars img {',
-    '      display: block;',
-    '      width: 100%;',
-    '      max-width: 48mm;',
-    `      max-height: ${barsMaxH};`,
-    '      height: auto;',
-    '      object-fit: contain;',
-    '      image-rendering: -webkit-optimize-contrast;',
-    '      image-rendering: crisp-edges;',
-    '    }',
-    '    .barcode-code {',
-    '      text-align: center;',
-    '      font-family: "Courier New", Courier, monospace;',
-    '      font-size: 2.8mm;',
-    '      font-weight: 700;',
-    '      letter-spacing: 0.12mm;',
-    '      line-height: 1;',
-    '      margin: 0;',
-    '      padding: 0;',
-    '      white-space: nowrap;',
-    '      overflow: hidden;',
-    '      text-overflow: ellipsis;',
-    '    }',
+    `    html, body { width: ${widthMm}mm; height: ${heightMm}mm; overflow: hidden; background: #fff; }`,
+    '    body { font-family: Arial, Helvetica, sans-serif; color: #000;',
+    '      -webkit-print-color-adjust: exact; print-color-adjust: exact; }',
+    `    .label { width: ${widthMm}mm; height: ${heightMm}mm; display: flex; flex-direction: column;`,
+    '      align-items: stretch; padding: 0.8mm 1.5mm 0.3mm; }',
+    '    .name { text-align: center; font-weight: 700; line-height: 1.05; overflow: hidden;',
+    '      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;',
+    '      word-break: break-word; hyphens: auto; }',
+    `    .name.size-lg { font-size: ${fonts.lg}; }`,
+    `    .name.size-md { font-size: ${fonts.md}; }`,
+    `    .name.size-sm { font-size: ${fonts.sm}; }`,
+    '    .price { text-align: center; font-size: 2.3mm; font-weight: 800; line-height: 1;',
+    '      margin: 0.15mm 0; white-space: nowrap; }',
+    '    .barcode-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column;',
+    '      justify-content: flex-end; gap: 0; overflow: hidden; }',
+    '    .barcode-bars { display: flex; align-items: flex-end; justify-content: center; overflow: hidden; }',
+    '    .barcode-bars img { display: block; width: 100%; height: auto; object-fit: contain;',
+    '      image-rendering: -webkit-optimize-contrast; image-rendering: crisp-edges;',
+    `      max-width: ${barcodeMaxW}; max-height: ${barsMaxH}; }`,
+    '    .barcode-code { text-align: center; font-family: "Courier New", Courier, monospace;',
+    `      font-size: ${codeFont}; font-weight: 700; letter-spacing: 0.12mm; line-height: 1;`,
+    '      margin: 0; padding: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
     '  </style>',
     '</head>',
     '<body>',
@@ -225,12 +174,6 @@ function writeTempHtml(html: string): string {
   return file
 }
 
-function resolvePrinterName(printerName: string): string {
-  const name = printerName.trim()
-  if (name) return name
-  throw new Error('Seleccione la impresora de etiquetas en Configuración')
-}
-
 async function waitForImages(win: BrowserWindow): Promise<void> {
   await win.webContents.executeJavaScript(`
     Promise.all(Array.from(document.images).map((img) =>
@@ -243,16 +186,19 @@ async function waitForImages(win: BrowserWindow): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 250))
 }
 
-/** Imprime una etiqueta autoadhesiva de 50 × 25 mm. */
-export async function printLabel50x25(
+/** Imprime una etiqueta autoadhesiva (tamaño y DPI según configuración). */
+export async function printLabel(
   content: LabelPrintContent,
-  printerName: string
+  printerName: string,
+  dims: LabelDimensions,
+  alternatePrinter = ''
 ): Promise<void> {
   const hasPrice = Boolean(content.priceText)
-  const barcode = prepareBarcodeImage(content.barcodeImagePath, hasPrice)
-  const htmlFile = writeTempHtml(buildLabel50x25Html(content, barcode))
-  const winW = mmToScreenPx(LABEL_50X25_MM.width)
-  const winH = mmToScreenPx(LABEL_50X25_MM.height)
+  const barcode = prepareBarcodeImage(content.barcodeImagePath, dims, hasPrice)
+  const htmlFile = writeTempHtml(buildLabelHtml(content, barcode, dims))
+  const winW = mmToScreenPx(dims.widthMm)
+  const winH = mmToScreenPx(dims.heightMm)
+  const device = await resolvePrinterName(printerName, 'etiquetas', alternatePrinter)
 
   const win = new BrowserWindow({
     width: winW,
@@ -275,13 +221,13 @@ export async function printLabel50x25(
         {
           silent: true,
           printBackground: true,
-          deviceName: resolvePrinterName(printerName),
+          deviceName: device,
           margins: { marginType: 'none' },
           pageSize: {
-            width: LABEL_50X25_MICRONS.width,
-            height: LABEL_50X25_MICRONS.height
+            width: mmToMicrons(dims.widthMm),
+            height: mmToMicrons(dims.heightMm)
           },
-          dpi: { horizontal: THERMAL_DPI, vertical: THERMAL_DPI },
+          dpi: { horizontal: dims.dpi, vertical: dims.dpi },
           scaleFactor: 100,
           copies: 1
         },
@@ -307,6 +253,77 @@ export async function printLabel50x25(
       } catch {
         /* ignorar */
       }
+    }
+  }
+}
+
+export async function printLabel50x25(
+  content: LabelPrintContent,
+  printerName: string
+): Promise<void> {
+  await printLabel(content, printerName, { widthMm: 50, heightMm: 25, dpi: 203 })
+}
+
+/** Etiqueta de prueba (layout y tamaño configurado). */
+export async function printTestLabel(
+  companyName: string,
+  printerName: string,
+  dims: LabelDimensions,
+  alternatePrinter = ''
+): Promise<void> {
+  const html = [
+    '<!DOCTYPE html><html><head><meta charset="utf-8"><style>',
+    `@page { size: ${dims.widthMm}mm ${dims.heightMm}mm; margin: 0; }`,
+    `html,body{width:${dims.widthMm}mm;height:${dims.heightMm}mm;margin:0;font-family:Arial,sans-serif;}`,
+    '.c{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:2mm;text-align:center;}',
+    '.t{font-weight:700;font-size:2.5mm;}.s{font-size:2mm;margin-top:1mm;}.b{font-family:monospace;font-size:2.2mm;margin-top:2mm;}',
+    '</style></head><body><div class="c">',
+    `<div class="t">${escapeHtml(companyName)}</div>`,
+    '<div class="s">ETIQUETA DE PRUEBA</div>',
+    `<div class="s">${dims.widthMm} × ${dims.heightMm} mm · ${dims.dpi} DPI</div>`,
+    '<div class="b">▮▮▮▮▮▮▮▮▮▮</div>',
+    '<div class="b">1234567890123</div>',
+    '</div></body></html>'
+  ].join('')
+
+  const htmlFile = writeTempHtml(html)
+  const device = await resolvePrinterName(printerName, 'etiquetas', alternatePrinter)
+  const win = new BrowserWindow({
+    width: mmToScreenPx(dims.widthMm),
+    height: mmToScreenPx(dims.heightMm),
+    show: false,
+    webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: false }
+  })
+
+  try {
+    await win.loadFile(htmlFile)
+    await new Promise<void>((resolve, reject) => {
+      win.webContents.print(
+        {
+          silent: true,
+          printBackground: true,
+          deviceName: device,
+          margins: { marginType: 'none' },
+          pageSize: {
+            width: mmToMicrons(dims.widthMm),
+            height: mmToMicrons(dims.heightMm)
+          },
+          dpi: { horizontal: dims.dpi, vertical: dims.dpi },
+          scaleFactor: 100,
+          copies: 1
+        },
+        (success, failureReason) => {
+          if (!success) reject(new Error(failureReason ?? 'No se pudo imprimir'))
+          else resolve()
+        }
+      )
+    })
+  } finally {
+    win.close()
+    try {
+      unlinkSync(htmlFile)
+    } catch {
+      /* ignorar */
     }
   }
 }

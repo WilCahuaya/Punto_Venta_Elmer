@@ -11,6 +11,7 @@ import {
   type PosPrintLine,
   type ThermalPaperSize
 } from './pos-print-options'
+import { printEscPosTicket, pxToMicrons } from './escpos-ticket.service'
 
 function escapeHtml(text: string): string {
   return text
@@ -63,6 +64,8 @@ function buildReceiptHtml(data: PosPrintLine[], widthPx: number): string {
       font-family: Arial, Helvetica, sans-serif;
       font-size: 11px;
       color: #000;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
     }
   </style>
 </head>
@@ -90,11 +93,7 @@ function writeTempHtml(html: string): string {
   return file
 }
 
-function resolvePrinterName(printerName: string): string {
-  const name = printerName.trim()
-  if (name) return name
-  throw new Error('Seleccione la impresora ADV-9013N en Configuración → Impresoras')
-}
+import { resolvePrinterName } from './printer-resolve.service'
 
 type PosPrinterModule = {
   PosPrinter: {
@@ -110,17 +109,17 @@ function getPosPrinter(): PosPrinterModule['PosPrinter'] {
 /** Impresión con electron-pos-printer (compatible con impresoras térmicas Windows). */
 async function printWithPosPrinter(
   data: PosPrintLine[],
-  printerName: string,
+  deviceName: string,
   paper: ThermalPaperSize
 ): Promise<void> {
   const PosPrinter = getPosPrinter()
-  await PosPrinter.print(data, buildPosPrintOptions(resolvePrinterName(printerName), data, paper))
+  await PosPrinter.print(data, buildPosPrintOptions(deviceName, data, paper))
 }
 
 /** Impresión HTML con ventana ajustada al contenido (menos papel en blanco). */
 async function printWithHtmlWindow(
   data: PosPrintLine[],
-  printerName: string,
+  deviceName: string,
   paper: ThermalPaperSize
 ): Promise<void> {
   const widthPx = PAPER_WIDTH_PX[paper]
@@ -149,14 +148,18 @@ async function printWithHtmlWindow(
     win.setContentSize(widthPx, finalHeight)
 
     await new Promise<void>((resolve, reject) => {
+      const widthMicrons = pxToMicrons(widthPx)
+      const heightMicrons = pxToMicrons(finalHeight)
+
       win.webContents.print(
         {
           silent: true,
           printBackground: true,
-          deviceName: resolvePrinterName(printerName),
+          deviceName,
           margins: { marginType: 'none' },
-          pageSize: { width: widthPx, height: finalHeight },
-          copies: 1
+          pageSize: { width: widthMicrons, height: heightMicrons },
+          copies: 1,
+          color: false
         },
         (success, failureReason) => {
           if (!success) {
@@ -178,25 +181,44 @@ async function printWithHtmlWindow(
 }
 
 /**
- * Imprime ticket/etiqueta térmica.
- * Usa electron-pos-printer (más fiable en Windows) y, si falla, HTML ajustado.
+ * Imprime ticket térmico.
+ * 1) ESC/POS RAW (POS-80 y similares en Windows)
+ * 2) electron-pos-printer (GDI)
+ * 3) HTML con ventana ajustada
  */
 export async function printThermalLines(
   data: PosPrintLine[],
   printerName: string,
   paper: ThermalPaperSize
-): Promise<void> {
-  if (!data.length) return
+): Promise<{ method: string }> {
+  if (!data.length) return { method: 'vacío' }
 
-  try {
-    await printWithPosPrinter(data, printerName, paper)
-  } catch (posError) {
+  const device = await resolvePrinterName(printerName, 'tickets')
+  const errors: string[] = []
+
+  if (process.platform === 'win32') {
     try {
-      await printWithHtmlWindow(data, printerName, paper)
-    } catch (htmlError) {
-      const posMsg = posError instanceof Error ? posError.message : String(posError)
-      const htmlMsg = htmlError instanceof Error ? htmlError.message : String(htmlError)
-      throw new Error(`Impresión fallida: ${posMsg}. Respaldo: ${htmlMsg}`)
+      const result = await printEscPosTicket(data, device)
+      console.info('[print]', result.method)
+      return result
+    } catch (e) {
+      errors.push(`ESC/POS: ${e instanceof Error ? e.message : String(e)}`)
     }
   }
+
+  try {
+    await printWithPosPrinter(data, device, paper)
+    return { method: `GDI electron-pos-printer (${device})` }
+  } catch (e) {
+    errors.push(`GDI: ${e instanceof Error ? e.message : String(e)}`)
+  }
+
+  try {
+    await printWithHtmlWindow(data, device, paper)
+    return { method: `HTML (${device})` }
+  } catch (e) {
+    errors.push(`HTML: ${e instanceof Error ? e.message : String(e)}`)
+  }
+
+  throw new Error(`Impresión fallida. ${errors.join(' | ')}`)
 }

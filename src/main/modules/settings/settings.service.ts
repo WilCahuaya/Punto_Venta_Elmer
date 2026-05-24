@@ -8,8 +8,12 @@ import type {
   SettingsUpdateInput
 } from '@shared/types/settings'
 import { CURRENCY_DECIMALS } from '@shared/lib/currency'
+import { parseLabelDpi } from '@shared/lib/thermal-print'
 import { getDatabase } from '../../database/connection'
 import { ensureImagesDir, getImageMediaUrl, pickImageFile } from '../../services/image.service'
+import { getLabelDimensionsFromSettings } from '../../services/label-settings'
+import { printTestLabel } from '../../services/label-print.service'
+import { mapPrinterList } from '../../services/printer-resolve.service'
 import { resolveImagePath } from '../../utils/paths'
 import { parseTicketLogoWidthPercent } from '../../services/ticket-logo'
 import { printTestTicket } from '../../services/printer.service'
@@ -24,6 +28,10 @@ const ALLOWED_KEYS = new Set([
   'printer_ticket',
   'printer_labels',
   'printer_paper_width',
+  'label_preset',
+  'label_width_mm',
+  'label_height_mm',
+  'label_dpi',
   'ticket_logo_width_percent',
   'backup_auto_enabled',
   'backup_retention_days'
@@ -40,12 +48,16 @@ function mapSettings(map: Record<string, string>): AppSettingsFull {
     currencySymbol: map.currency_symbol ?? 'S/',
     currencyDecimals: CURRENCY_DECIMALS,
     soundsEnabled: map.sounds_enabled !== 'false',
-    companyName: map.company_name ?? 'Mi Negocio',
+    companyName: map.company_name ?? '',
     companyAddress: map.company_address ?? '',
     companyLogoPath: map.company_logo_path || null,
     printerTicket: map.printer_ticket ?? '',
     printerLabels: map.printer_labels ?? '',
     printerPaperWidth: map.printer_paper_width === '80mm' ? '80mm' : '58mm',
+    labelPreset: map.label_preset ?? '50x25',
+    labelWidthMm: Number(map.label_width_mm ?? 50) || 50,
+    labelHeightMm: Number(map.label_height_mm ?? 25) || 25,
+    labelDpi: parseLabelDpi(map.label_dpi),
     ticketLogoWidthPercent: parseTicketLogoWidthPercent(map.ticket_logo_width_percent)
   }
 }
@@ -94,6 +106,18 @@ export function updateSettings(input: SettingsUpdateInput): ApiResult<AppSetting
       input.printerPaperWidth === '80mm' ? '80mm' : '58mm'
     )
   }
+  if (input.labelPreset !== undefined) {
+    upsertSetting(db, 'label_preset', input.labelPreset.trim() || '50x25')
+  }
+  if (input.labelWidthMm !== undefined) {
+    upsertSetting(db, 'label_width_mm', String(Math.max(20, Math.min(120, input.labelWidthMm))))
+  }
+  if (input.labelHeightMm !== undefined) {
+    upsertSetting(db, 'label_height_mm', String(Math.max(10, Math.min(80, input.labelHeightMm))))
+  }
+  if (input.labelDpi !== undefined) {
+    upsertSetting(db, 'label_dpi', String(parseLabelDpi(String(input.labelDpi))))
+  }
   if (input.ticketLogoWidthPercent !== undefined) {
     upsertSetting(
       db,
@@ -127,13 +151,7 @@ export async function listPrintersService(): Promise<ApiResult<PrinterInfo[]>> {
     const printers = await win.webContents.getPrintersAsync()
     if (temp) temp.destroy()
 
-    const mapped: PrinterInfo[] = printers.map((p) => ({
-      name: p.name,
-      displayName: p.displayName || p.name,
-      isDefault: p.isDefault,
-      status: p.status
-    }))
-
+    const mapped = mapPrinterList(printers)
     return { ok: true, data: mapped }
   } catch (e) {
     return {
@@ -187,8 +205,27 @@ export function getLogoUrlService(relativePath: string | null): ApiResult<string
   return { ok: true, data: getImageMediaUrl(relativePath) }
 }
 
-export async function testPrintTicketService(): Promise<ApiResult<null>> {
+export async function testPrintLabelService(): Promise<ApiResult<null>> {
+  const db = getDatabase()
+  const map = getSettingsMap(db)
+  const companyName = map.company_name?.trim() || 'Punto de Venta'
+  const printerLabels = map.printer_labels ?? ''
+  const printerTicket = map.printer_ticket ?? ''
+  const dims = getLabelDimensionsFromSettings()
+
+  try {
+    await printTestLabel(companyName, printerLabels, dims, printerTicket)
+    return { ok: true, data: null }
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : 'Error al imprimir etiqueta de prueba'
+    }
+  }
+}
+
+export async function testPrintTicketService(): Promise<ApiResult<{ method?: string }>> {
   const result = await printTestTicket()
   if (!result.ok) return { ok: false, error: result.error ?? 'Error de impresión' }
-  return { ok: true, data: null }
+  return { ok: true, data: { method: result.method } }
 }

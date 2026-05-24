@@ -1,4 +1,6 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react'
+import { LABEL_PRESETS } from '@shared/lib/thermal-print'
+import type { LabelDpi } from '@shared/lib/thermal-print'
 import type { PrinterInfo } from '@shared/types/settings'
 import type { ThemeMode } from '@shared/types/api'
 import { Badge } from '../../components/ui/Badge'
@@ -26,6 +28,10 @@ export function SettingsPage(): React.JSX.Element {
   const [ticketLogoWidthPercent, setTicketLogoWidthPercent] = useState(
     store.ticketLogoWidthPercent
   )
+  const [labelPreset, setLabelPreset] = useState(store.labelPreset)
+  const [labelWidthMm, setLabelWidthMm] = useState(store.labelWidthMm)
+  const [labelHeightMm, setLabelHeightMm] = useState(store.labelHeightMm)
+  const [labelDpi, setLabelDpi] = useState<LabelDpi>(store.labelDpi)
 
   const [printers, setPrinters] = useState<PrinterInfo[]>([])
   const [detecting, setDetecting] = useState(false)
@@ -43,6 +49,10 @@ export function SettingsPage(): React.JSX.Element {
     setPrinterLabels(store.printerLabels)
     setPrinterPaperWidth(store.printerPaperWidth)
     setTicketLogoWidthPercent(store.ticketLogoWidthPercent)
+    setLabelPreset(store.labelPreset)
+    setLabelWidthMm(store.labelWidthMm)
+    setLabelHeightMm(store.labelHeightMm)
+    setLabelDpi(store.labelDpi)
   }, [store])
 
   useEffect(() => {
@@ -67,7 +77,7 @@ export function SettingsPage(): React.JSX.Element {
   }, [])
 
   const printerOptions = [
-    { value: '', label: 'Predeterminada del sistema' },
+    { value: '', label: 'Predeterminada de Windows' },
     ...printers.map((p) => ({
       value: p.name,
       label: `${p.displayName}${p.isDefault ? ' (default)' : ''}`
@@ -95,6 +105,26 @@ export function SettingsPage(): React.JSX.Element {
     }
   }
 
+  async function handleTestLabelPrint(): Promise<void> {
+    setError(null)
+    const saveFirst = await store.save({
+      printerLabels,
+      printerTicket,
+      labelPreset,
+      labelWidthMm,
+      labelHeightMm,
+      labelDpi,
+      companyName
+    })
+    if (!saveFirst.ok) {
+      setError(saveFirst.error)
+      return
+    }
+    const result = await window.api.settings.testLabelPrint()
+    if (!result.ok) setError(result.error)
+    else setMessage('Etiqueta de prueba enviada a la impresora')
+  }
+
   async function handleTestPrint(): Promise<void> {
     setError(null)
     const saveFirst = await store.save({
@@ -111,7 +141,10 @@ export function SettingsPage(): React.JSX.Element {
     }
     const result = await window.api.settings.testPrint()
     if (!result.ok) setError(result.error)
-    else setMessage('Ticket de prueba enviado a la impresora')
+    else {
+      const via = result.data?.method ? ` (${result.data.method})` : ''
+      setMessage(`Ticket de prueba enviado${via}`)
+    }
   }
 
   async function handleSubmit(e: FormEvent): Promise<void> {
@@ -127,6 +160,10 @@ export function SettingsPage(): React.JSX.Element {
       printerTicket,
       printerLabels,
       printerPaperWidth,
+      labelPreset,
+      labelWidthMm,
+      labelHeightMm,
+      labelDpi,
       ticketLogoWidthPercent
     })
     setSaving(false)
@@ -239,6 +276,11 @@ export function SettingsPage(): React.JSX.Element {
             </Button>
           </div>
           <div className="space-y-4">
+            <p className="text-sm text-[rgb(var(--text-muted))]">
+              Compatible con impresoras térmicas genéricas instaladas en Windows (cualquier
+              marca). Conecte el USB, instale el driver del fabricante y pulse «Detectar
+              impresoras».
+            </p>
             <Select
               label="Impresora de tickets (POS)"
               value={printerTicket}
@@ -246,13 +288,7 @@ export function SettingsPage(): React.JSX.Element {
               options={printerOptions}
             />
             <Select
-              label="Impresora de etiquetas"
-              value={printerLabels}
-              onChange={setPrinterLabels}
-              options={printerOptions}
-            />
-            <Select
-              label="Ancho de papel térmico"
+              label="Ancho de rollo — tickets"
               value={printerPaperWidth}
               onChange={(v) => setPrinterPaperWidth(v === '80mm' ? '80mm' : '58mm')}
               options={[
@@ -260,12 +296,59 @@ export function SettingsPage(): React.JSX.Element {
                 { value: '80mm', label: '80 mm (rollo ancho)' }
               ]}
             />
-            <p className="text-xs text-[rgb(var(--text-muted))]">
-              Use la impresora térmica configurada en Windows. Si imprime muchas hojas, verifique
-              que el ancho coincida con su rollo y no use impresora láser A4 para tickets.
-            </p>
             <Button type="button" variant="secondary" onClick={() => void handleTestPrint()}>
               Imprimir ticket de prueba
+            </Button>
+
+            <hr className="border-surface-border" />
+
+            <Select
+              label="Impresora de etiquetas"
+              value={printerLabels}
+              onChange={setPrinterLabels}
+              options={printerOptions}
+            />
+            <p className="text-xs text-[rgb(var(--text-muted))]">
+              Si no elige impresora de etiquetas, se usará la de tickets o la predeterminada de
+              Windows.
+            </p>
+            <Select
+              label="Tamaño de etiqueta autoadhesiva"
+              value={labelPreset}
+              onChange={setLabelPreset}
+              options={LABEL_PRESETS.map((p) => ({ value: p.id, label: p.label }))}
+            />
+            {labelPreset === 'custom' && (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Input
+                  label="Ancho (mm)"
+                  type="number"
+                  min={20}
+                  max={120}
+                  value={String(labelWidthMm)}
+                  onChange={(e) => setLabelWidthMm(Number(e.target.value) || 50)}
+                />
+                <Input
+                  label="Alto (mm)"
+                  type="number"
+                  min={10}
+                  max={80}
+                  value={String(labelHeightMm)}
+                  onChange={(e) => setLabelHeightMm(Number(e.target.value) || 25)}
+                />
+              </div>
+            )}
+            <Select
+              label="Resolución de etiquetas (DPI)"
+              value={String(labelDpi)}
+              onChange={(v) => setLabelDpi(v === '300' ? 300 : 203)}
+              options={[
+                { value: '203', label: '203 DPI (estándar térmica)' },
+                { value: '300', label: '300 DPI (alta resolución)' }
+              ]}
+            />
+            <Button type="button" variant="secondary" onClick={() => void handleTestLabelPrint()}>
+              Imprimir etiqueta de prueba
             </Button>
           </div>
         </section>

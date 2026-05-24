@@ -18,12 +18,16 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   currencySymbol: 'S/',
   currencyDecimals: 2,
   soundsEnabled: true,
-  companyName: 'Mi Negocio',
+  companyName: '',
   companyAddress: '',
   companyLogoPath: null,
   printerTicket: '',
   printerLabels: '',
   printerPaperWidth: '58mm',
+  labelPreset: '50x25',
+  labelWidthMm: 50,
+  labelHeightMm: 25,
+  labelDpi: 203,
   ticketLogoWidthPercent: 65,
   hydrated: false,
 
@@ -48,6 +52,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       printerTicket: input.printerTicket,
       printerLabels: input.printerLabels,
       printerPaperWidth: input.printerPaperWidth,
+      labelPreset: input.labelPreset,
+      labelWidthMm: input.labelWidthMm,
+      labelHeightMm: input.labelHeightMm,
+      labelDpi: input.labelDpi,
       ticketLogoWidthPercent: input.ticketLogoWidthPercent
     })
     if (!result.ok) return { ok: false, error: result.error }

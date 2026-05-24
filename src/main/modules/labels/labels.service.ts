@@ -24,7 +24,8 @@ import { getDatabase } from '../../database/connection'
 
 import { generateCandidateBarcode } from '../../utils/barcode'
 
-import { printLabel50x25 } from '../../services/label-print.service'
+import { printLabel } from '../../services/label-print.service'
+import { getLabelDimensionsFromSettings } from '../../services/label-settings'
 
 import { barcodeExists } from './labels.repository'
 
@@ -132,11 +133,13 @@ export async function printLabelsService(
 
 
 
-  const printerName = getSetting('printer_labels', '') || getSetting('printer_ticket', '')
+  const printerLabels = getSetting('printer_labels', '')
+  const printerTicket = getSetting('printer_ticket', '')
+  const dims = getLabelDimensionsFromSettings()
 
   const currencySymbol = getSetting('currency_symbol', 'S/')
 
-  const companyName = getSetting('company_name', 'Mi Negocio')
+  const companyName = getSetting('company_name', '').trim() || 'Punto de Venta'
 
 
 
@@ -174,23 +177,17 @@ export async function printLabelsService(
 
       for (let c = 0; c < copies; c++) {
 
-        await printLabel50x25(
-
+        await printLabel(
           {
-
             companyName,
-
             productName: item.name,
-
             priceText,
-
             barcodeCode: item.barcode,
             barcodeImagePath: imagePath
-
           },
-
-          printerName
-
+          printerLabels,
+          dims,
+          printerTicket
         )
 
         printed++

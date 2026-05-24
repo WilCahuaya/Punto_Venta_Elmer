@@ -28,9 +28,10 @@ function getPrintContext(): ReturnType<typeof getPaperAndLogoPercent> {
   )
 }
 
-async function posPrint(data: PosPrintLine[], printerName: string): Promise<void> {
+async function posPrint(data: PosPrintLine[], printerName: string): Promise<string> {
   const paper = parseThermalPaperSize(getSetting('printer_paper_width', '58mm'))
-  await printThermalLines(data, printerName, paper)
+  const result = await printThermalLines(data, printerName, paper)
+  return result.method
 }
 
 function appendTicketLogo(data: PosPrintLine[], prepared: PreparedTicketLogo | null): void {
@@ -75,7 +76,7 @@ function buildTicketHeader(
   return { data, prepared }
 }
 
-export async function printSaleTicket(saleId: number): Promise<{ ok: boolean; error?: string }> {
+export async function printSaleTicket(saleId: number): Promise<{ ok: boolean; error?: string; method?: string }> {
   const db = getDatabase()
   const sale = getSaleById(db, saleId)
   if (!sale) return { ok: false, error: 'Venta no encontrada' }
@@ -133,8 +134,8 @@ export async function printSaleTicket(saleId: number): Promise<{ ok: boolean; er
       { type: 'text', value: '¡Gracias por su compra!', style: { textAlign: 'center', fontSize: '11px' } }
     )
 
-    await posPrint(data, printerName)
-    return { ok: true }
+    const method = await posPrint(data, printerName)
+    return { ok: true, method }
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Error de impresión'
     return { ok: false, error: msg }
@@ -144,7 +145,7 @@ export async function printSaleTicket(saleId: number): Promise<{ ok: boolean; er
 }
 
 /** Ticket de prueba para configuración de impresora. */
-export async function printTestTicket(): Promise<{ ok: boolean; error?: string }> {
+export async function printTestTicket(): Promise<{ ok: boolean; error?: string; method?: string }> {
   const companyName = getSetting('company_name', 'Punto de Venta')
   const companyAddress = getSetting('company_address', '')
   const currencySymbol = getSetting('currency_symbol', 'S/')
@@ -172,8 +173,8 @@ export async function printTestTicket(): Promise<{ ok: boolean; error?: string }
       { type: 'text', value: 'Impresora configurada correctamente', style: { textAlign: 'center', fontSize: '10px' } }
     )
 
-    await posPrint(data, printerName)
-    return { ok: true }
+    const method = await posPrint(data, printerName)
+    return { ok: true, method }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'Error de impresión' }
   } finally {

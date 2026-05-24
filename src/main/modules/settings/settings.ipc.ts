@@ -9,6 +9,7 @@ import {
   removeCompanyLogoService,
   setSetting,
   testPrintTicketService,
+  testPrintLabelService,
   updateSettings
 } from './settings.service'
 
@@ -27,4 +28,5 @@ export function registerSettingsIpc(): void {
     getLogoUrlService(path)
   )
   ipcMain.handle(IPC_CHANNELS.SETTINGS_TEST_PRINT, () => testPrintTicketService())
+  ipcMain.handle(IPC_CHANNELS.SETTINGS_TEST_LABEL_PRINT, () => testPrintLabelService())
 }

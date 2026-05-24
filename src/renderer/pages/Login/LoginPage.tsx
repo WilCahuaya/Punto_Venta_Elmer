@@ -8,7 +8,7 @@ export function LoginPage(): React.JSX.Element {
   const navigate = useNavigate()
   const login = useAuthStore((s) => s.login)
   const error = useAuthStore((s) => s.error)
-  const [username, setUsername] = useState('admin')
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
@@ -50,9 +50,11 @@ export function LoginPage(): React.JSX.Element {
         </Button>
       </form>
 
-      <p className="mt-6 text-center text-xs text-[rgb(var(--text-muted))]">
-        Usuario por defecto: <strong>admin</strong> / <strong>admin123</strong>
-      </p>
+      {import.meta.env.DEV ? (
+        <p className="mt-6 text-center text-xs text-[rgb(var(--text-muted))]">
+          Desarrollo: usuario <strong>admin</strong> / <strong>admin123</strong>
+        </p>
+      ) : null}
     </div>
   )
 }

@@ -10,6 +10,7 @@ export const IPC_CHANNELS = {
   SETTINGS_REMOVE_LOGO: 'settings:removeLogo',
   SETTINGS_LOGO_URL: 'settings:logoUrl',
   SETTINGS_TEST_PRINT: 'settings:testPrint',
+  SETTINGS_TEST_LABEL_PRINT: 'settings:testLabelPrint',
   CATEGORIES_LIST: 'categories:list',
   CATEGORIES_GET: 'categories:get',
   CATEGORIES_CREATE: 'categories:create',

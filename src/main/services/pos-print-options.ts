@@ -1,5 +1,12 @@
-/** Ancho de rollo térmico soportado por electron-pos-printer. */
-export type ThermalPaperSize = '58mm' | '80mm'
+import {
+  PAPER_WIDTH_PX,
+  PAPER_PRINTABLE_WIDTH_PX,
+  parseThermalPaperSize,
+  type ThermalPaperSize
+} from '@shared/lib/thermal-print'
+
+export type { ThermalPaperSize }
+export { PAPER_WIDTH_PX, PAPER_PRINTABLE_WIDTH_PX, parseThermalPaperSize }
 
 export interface PosPrintLine {
   type?: string
@@ -14,21 +21,6 @@ export interface PosPrintLine {
   }
   height?: number
   width?: number
-}
-
-export const PAPER_WIDTH_PX: Record<ThermalPaperSize, number> = {
-  '58mm': 219,
-  '80mm': 302
-}
-
-/** Ancho útil del ticket (márgenes laterales ~8 px c/u). */
-export const PAPER_PRINTABLE_WIDTH_PX: Record<ThermalPaperSize, number> = {
-  '58mm': PAPER_WIDTH_PX['58mm'] - 16,
-  '80mm': PAPER_WIDTH_PX['80mm'] - 16
-}
-
-export function parseThermalPaperSize(value: string | undefined): ThermalPaperSize {
-  return value === '80mm' ? '80mm' : '58mm'
 }
 
 /** Estima alto del contenido en px para preconfigurar la ventana de impresión. */
@@ -52,29 +44,23 @@ export function estimatePrintHeightPx(data: PosPrintLine[]): number {
 
 /**
  * Opciones para electron-pos-printer.
- * `pageSize` en formato térmico evita que Windows parta cada línea en una hoja A4.
+ * Usar pageSize como string ('80mm') para que la librería calcule el alto real del contenido.
  */
 export function buildPosPrintOptions(
   printerName: string,
   data: PosPrintLine[],
   paperSize: ThermalPaperSize = '58mm'
 ): Record<string, unknown> {
-  const heightPx = estimatePrintHeightPx(data)
-  const widthPx = PAPER_WIDTH_PX[paperSize]
-
   return {
     printerName: printerName || undefined,
     preview: false,
-    width: paperSize,
-    pageSize: {
-      width: widthPx,
-      height: heightPx
-    },
-    margin: '0',
+    pageSize: paperSize,
+    margin: '0 0 0 0',
     margins: { marginType: 'none' as const },
     copies: 1,
-    timeOutPerLine: 400,
+    timeOutPerLine: 600,
     silent: true,
-    printBackground: false
+    printBackground: true,
+    color: false
   }
 }

@@ -55,6 +55,6 @@ export function useAppSettings(): AppSettings {
     currencySymbol,
     currencyDecimals: 2,
     soundsEnabled: true,
-    companyName: 'Mi Negocio'
+    companyName: ''
   }
 }

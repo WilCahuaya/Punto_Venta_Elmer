@@ -1,5 +1,7 @@
 node_modules
 dist
+release
+release-*
 out
 *.db
 *.db-journal

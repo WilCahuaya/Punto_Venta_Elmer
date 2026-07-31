@@ -6,5 +6,3 @@ export function barcodeExists(db: Database.Database, barcode: string): boolean {
     | undefined
   return !!row
 }
-
-export { generateCandidateBarcode } from '../../utils/barcode'

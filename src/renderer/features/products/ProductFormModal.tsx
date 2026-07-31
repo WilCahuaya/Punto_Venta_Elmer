@@ -5,6 +5,7 @@ import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { Modal } from '../../components/ui/Modal'
 import { MoneyInput } from '../../components/ui/MoneyInput'
+import { NumberInput } from '../../components/ui/NumberInput'
 import { Select } from '../../components/ui/Select'
 import { useProductImage } from '../../hooks/useProductImage'
 import { buildCategorySelectOptions } from '../../lib/category-options'
@@ -314,23 +315,21 @@ export function ProductFormModal({
               required={isCreate}
               error={fieldErrors.priceWholesale}
             />
-            <Input
+            <NumberInput
               label="Stock inicial"
-              type="number"
               min={0}
-              step="any"
-              value={String(form.stock ?? 0)}
-              onChange={(e) => setForm({ ...form, stock: Number(e.target.value) || 0 })}
+              emptyValue={0}
+              value={form.stock ?? 0}
+              onChange={(v) => setForm({ ...form, stock: v })}
             />
           </div>
-          <Input
+          <NumberInput
             label="Stock mínimo (alerta)"
-            type="number"
             min={0}
             max={form.stock ?? 0}
-            step="any"
-            value={String(form.stockMin ?? 0)}
-            onChange={(e) => setForm({ ...form, stockMin: Number(e.target.value) || 0 })}
+            emptyValue={0}
+            value={form.stockMin ?? 0}
+            onChange={(v) => setForm({ ...form, stockMin: v })}
             error={fieldErrors.stockMin}
           />
         </FormSection>

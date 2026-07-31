@@ -94,9 +94,10 @@ const api = {
     getStats: () => ipcRenderer.invoke(IPC_CHANNELS.DASHBOARD_STATS)
   },
   labels: {
-    generateBarcode: () => ipcRenderer.invoke(IPC_CHANNELS.LABELS_GENERATE_BARCODE),
     checkBarcode: (barcode: string) => ipcRenderer.invoke(IPC_CHANNELS.LABELS_CHECK_BARCODE, barcode),
-    print: (payload: LabelPrintPayload) => ipcRenderer.invoke(IPC_CHANNELS.LABELS_PRINT, payload)
+    print: (payload: LabelPrintPayload) => ipcRenderer.invoke(IPC_CHANNELS.LABELS_PRINT, payload),
+    previewPdf: (payload: LabelPrintPayload) =>
+      ipcRenderer.invoke(IPC_CHANNELS.LABELS_PREVIEW_PDF, payload)
   },
   backup: {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.BACKUP_LIST),

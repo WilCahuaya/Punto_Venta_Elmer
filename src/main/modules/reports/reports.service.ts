@@ -97,7 +97,9 @@ async function pickSavePath(defaultName: string, ext: 'pdf' | 'xlsx'): Promise<s
     ]
   })
   if (result.canceled || !result.filePath) return null
-  return result.filePath
+  const path = result.filePath
+  const suffix = `.${ext}`
+  return path.toLowerCase().endsWith(suffix) ? path : `${path}${suffix}`
 }
 
 export async function exportReportPdfService(

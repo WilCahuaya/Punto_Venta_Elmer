@@ -46,19 +46,31 @@ export function ReportsPage(): React.JSX.Element {
   async function handleExportPdf(): Promise<void> {
     setExporting('pdf')
     setError(null)
-    const result = await window.api.reports.exportPdf(range)
-    setExporting(null)
-    if (!result.ok) setError(result.error)
-    else setMessage(`PDF guardado: ${result.data}`)
+    setMessage(null)
+    try {
+      const result = await window.api.reports.exportPdf(range)
+      if (!result.ok) setError(result.error)
+      else setMessage(`PDF guardado: ${result.data}`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al exportar PDF')
+    } finally {
+      setExporting(null)
+    }
   }
 
   async function handleExportExcel(): Promise<void> {
     setExporting('excel')
     setError(null)
-    const result = await window.api.reports.exportExcel(range)
-    setExporting(null)
-    if (!result.ok) setError(result.error)
-    else setMessage(`Excel guardado: ${result.data}`)
+    setMessage(null)
+    try {
+      const result = await window.api.reports.exportExcel(range)
+      if (!result.ok) setError(result.error)
+      else setMessage(`Excel guardado: ${result.data}`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al exportar Excel')
+    } finally {
+      setExporting(null)
+    }
   }
 
   async function handleVoidConfirm(reason: string): Promise<void> {

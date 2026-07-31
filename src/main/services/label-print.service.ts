@@ -1,16 +1,36 @@
-import { BrowserWindow, nativeImage } from 'electron'
+import { BrowserWindow, dialog, nativeImage } from 'electron'
 import { existsSync, mkdirSync, writeFileSync, unlinkSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
 import { pathToFileURL } from 'url'
 import {
+  buildLabelCellCss,
+  buildLabelCellHtml,
+  buildSingleLabelDocumentHtml
+} from '@shared/lib/label-html'
+import {
+  A4_GAP_MM,
+  A4_MARGIN_MM,
+  A4_PAGE_HEIGHT_MM,
+  A4_PAGE_WIDTH_MM,
+  computeA4LabelGrid,
+  isCompactLabel,
   labelBarcodeBarsMaxMm,
   labelBarcodeMaxWidthMm,
   mmToMicrons,
   type LabelDimensions
 } from '@shared/lib/thermal-print'
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
 import { resolvePrinterName } from './printer-resolve.service'
+import { spawn } from 'child_process'
 
 export interface LabelPrintContent {
   companyName: string
@@ -20,32 +40,6 @@ export interface LabelPrintContent {
   barcodeImagePath: string
 }
 
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-}
-
-function truncate(text: string, max: number): string {
-  return text.length > max ? `${text.slice(0, max - 1)}…` : text
-}
-
-function getNameSizeClass(name: string, widthMm: number): 'size-lg' | 'size-md' | 'size-sm' {
-  const len = name.trim().length
-  const short = widthMm <= 35
-  if (len <= (short ? 14 : 18)) return 'size-lg'
-  if (len <= (short ? 24 : 32)) return 'size-md'
-  return 'size-sm'
-}
-
-function nameFontSizes(widthMm: number): { lg: string; md: string; sm: string } {
-  if (widthMm <= 35) return { lg: '2.1mm', md: '1.85mm', sm: '1.6mm' }
-  if (widthMm >= 55) return { lg: '2.8mm', md: '2.3mm', sm: '2mm' }
-  return { lg: '2.5mm', md: '2.1mm', sm: '1.85mm' }
-}
-
 function prepareBarcodeImage(
   sourcePath: string,
   dims: LabelDimensions,
@@ -53,7 +47,8 @@ function prepareBarcodeImage(
 ): { path: string; width: number; height: number } {
   const maxWidthPx = Math.round((labelBarcodeMaxWidthMm(dims.widthMm) / 25.4) * dims.dpi)
   const maxHeightPx = Math.round((labelBarcodeBarsMaxMm(dims.heightMm, hasPrice) / 25.4) * dims.dpi)
-  const minHeightPx = Math.round((8 / 25.4) * dims.dpi)
+  const minBarsMm = isCompactLabel(dims.widthMm, dims.heightMm) ? 3.5 : 8
+  const minHeightPx = Math.round((minBarsMm / 25.4) * dims.dpi)
 
   const img = nativeImage.createFromPath(sourcePath)
   if (img.isEmpty()) {
@@ -101,23 +96,36 @@ function mmToScreenPx(mm: number): number {
   return Math.max(1, Math.round((mm / 25.4) * 96))
 }
 
-export function buildLabelHtml(
+/** Impresoras virtuales que generan PDF/XPS (no respetan pageSize en print silencioso). */
+export function isPdfVirtualPrinter(name: string): boolean {
+  const n = name.toLowerCase()
+  return (
+    n.includes('pdf') ||
+    n.includes('xps') ||
+    n.includes('onenote') ||
+    n.includes('fax') ||
+    n.includes('document writer')
+  )
+}
+
+function buildLabelBodyHtml(
   content: LabelPrintContent,
   barcode: { path: string; width: number; height: number },
   dims: LabelDimensions
 ): string {
-  const { widthMm, heightMm } = dims
-  const imgSrc = pathToFileURL(barcode.path).href
-  const rawName = content.productName.trim() || 'Producto'
-  const name = escapeHtml(truncate(rawName, 80))
-  const nameClass = getNameSizeClass(rawName, widthMm)
-  const fonts = nameFontSizes(widthMm)
-  const price = content.priceText ? escapeHtml(content.priceText) : ''
-  const code = escapeHtml(content.barcodeCode.trim())
-  const barsMaxH = `${labelBarcodeBarsMaxMm(heightMm, Boolean(price))}mm`
-  const barcodeMaxW = `${labelBarcodeMaxWidthMm(widthMm)}mm`
-  const codeFont = widthMm <= 35 ? '2.4mm' : '2.8mm'
+  return buildLabelCellHtml(
+    {
+      productName: content.productName,
+      priceText: content.priceText,
+      barcodeCode: content.barcodeCode,
+      barcodeSrc: pathToFileURL(barcode.path).href
+    },
+    dims
+  )
+}
 
+function buildLabelsDocumentHtml(bodies: string[], dims: LabelDimensions): string {
+  const { widthMm, heightMm } = dims
   return [
     '<!DOCTYPE html>',
     '<html>',
@@ -126,44 +134,35 @@ export function buildLabelHtml(
     '  <style>',
     `    @page { size: ${widthMm}mm ${heightMm}mm; margin: 0; }`,
     '    * { box-sizing: border-box; margin: 0; padding: 0; }',
-    `    html, body { width: ${widthMm}mm; height: ${heightMm}mm; overflow: hidden; background: #fff; }`,
-    '    body { font-family: Arial, Helvetica, sans-serif; color: #000;',
+    '    html, body { margin: 0; padding: 0; background: #fff;',
+    '      font-family: Arial, Helvetica, sans-serif; color: #000;',
     '      -webkit-print-color-adjust: exact; print-color-adjust: exact; }',
-    `    .label { width: ${widthMm}mm; height: ${heightMm}mm; display: flex; flex-direction: column;`,
-    '      align-items: stretch; padding: 0.8mm 1.5mm 0.3mm; }',
-    '    .name { text-align: center; font-weight: 700; line-height: 1.05; overflow: hidden;',
-    '      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;',
-    '      word-break: break-word; hyphens: auto; }',
-    `    .name.size-lg { font-size: ${fonts.lg}; }`,
-    `    .name.size-md { font-size: ${fonts.md}; }`,
-    `    .name.size-sm { font-size: ${fonts.sm}; }`,
-    '    .price { text-align: center; font-size: 2.3mm; font-weight: 800; line-height: 1;',
-    '      margin: 0.15mm 0; white-space: nowrap; }',
-    '    .barcode-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column;',
-    '      justify-content: flex-end; gap: 0; overflow: hidden; }',
-    '    .barcode-bars { display: flex; align-items: flex-end; justify-content: center; overflow: hidden; }',
-    '    .barcode-bars img { display: block; width: 100%; height: auto; object-fit: contain;',
-    '      image-rendering: -webkit-optimize-contrast; image-rendering: crisp-edges;',
-    `      max-width: ${barcodeMaxW}; max-height: ${barsMaxH}; }`,
-    '    .barcode-code { text-align: center; font-family: "Courier New", Courier, monospace;',
-    `      font-size: ${codeFont}; font-weight: 700; letter-spacing: 0.12mm; line-height: 1;`,
-    '      margin: 0; padding: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
+    buildLabelCellCss(dims),
+    '    .label { page-break-after: always; break-after: page; }',
+    '    .label:last-child { page-break-after: auto; break-after: auto; }',
     '  </style>',
     '</head>',
     '<body>',
-    '  <div class="label">',
-    `    <div class="name ${nameClass}">${name}</div>`,
-    price ? `    <div class="price">${price}</div>` : '',
-    '    <div class="barcode-wrap">',
-    '      <div class="barcode-bars">',
-    `        <img src="${imgSrc}" width="${barcode.width}" height="${barcode.height}" alt="" />`,
-    '      </div>',
-    code ? `      <p class="barcode-code">${code}</p>` : '',
-    '    </div>',
-    '  </div>',
+    ...bodies,
     '</body>',
     '</html>'
   ].join('\n')
+}
+
+export function buildLabelHtml(
+  content: LabelPrintContent,
+  barcode: { path: string; width: number; height: number },
+  dims: LabelDimensions
+): string {
+  return buildSingleLabelDocumentHtml(
+    {
+      productName: content.productName,
+      priceText: content.priceText,
+      barcodeCode: content.barcodeCode,
+      barcodeSrc: pathToFileURL(barcode.path).href
+    },
+    dims
+  )
 }
 
 function writeTempHtml(html: string): string {
@@ -186,20 +185,59 @@ async function waitForImages(win: BrowserWindow): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 250))
 }
 
-/** Imprime una etiqueta autoadhesiva (tamaño y DPI según configuración). */
-export async function printLabel(
-  content: LabelPrintContent,
-  printerName: string,
-  dims: LabelDimensions,
-  alternatePrinter = ''
-): Promise<void> {
-  const hasPrice = Boolean(content.priceText)
-  const barcode = prepareBarcodeImage(content.barcodeImagePath, dims, hasPrice)
-  const htmlFile = writeTempHtml(buildLabelHtml(content, barcode, dims))
-  const winW = mmToScreenPx(dims.widthMm)
-  const winH = mmToScreenPx(dims.heightMm)
-  const device = await resolvePrinterName(printerName, 'etiquetas', alternatePrinter)
+async function savePdfWithDialog(pdf: Buffer, defaultName: string): Promise<string> {
+  const parent = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+  const result = await dialog.showSaveDialog(parent ?? undefined, {
+    title: 'Guardar etiquetas PDF',
+    defaultPath: defaultName,
+    filters: [{ name: 'PDF', extensions: ['pdf'] }]
+  })
+  if (result.canceled || !result.filePath) {
+    throw new Error('Guardado de PDF cancelado')
+  }
+  const filePath = result.filePath.endsWith('.pdf') ? result.filePath : `${result.filePath}.pdf`
+  writeFileSync(filePath, pdf)
+  return filePath
+}
 
+function escapePsSingleQuoted(value: string): string {
+  return value.replace(/'/g, "''")
+}
+
+/** Envía un PDF a una impresora física (Windows PrintTo). */
+async function printPdfFileToPrinter(pdfPath: string, printerName: string): Promise<void> {
+  const script = `
+$pdf = '${escapePsSingleQuoted(pdfPath)}'
+$printer = '${escapePsSingleQuoted(printerName)}'
+$p = Start-Process -FilePath $pdf -Verb PrintTo -ArgumentList $printer -PassThru -WindowStyle Hidden -ErrorAction Stop
+if ($p) { Wait-Process -Id $p.Id -Timeout 60 -ErrorAction SilentlyContinue }
+Start-Sleep -Milliseconds 800
+`
+  await new Promise<void>((resolve, reject) => {
+    const proc = spawn(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script],
+      { windowsHide: true }
+    )
+    let stderr = ''
+    proc.stderr.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString()
+    })
+    proc.on('error', reject)
+    proc.on('close', (code) => {
+      if (code === 0) resolve()
+      else reject(new Error(stderr.trim() || `No se pudo imprimir el PDF (código ${code})`))
+    })
+  })
+}
+
+async function renderHtmlToPdf(
+  htmlFile: string,
+  page: { widthMm: number; heightMm: number },
+  windowSize?: { width: number; height: number }
+): Promise<Buffer> {
+  const winW = windowSize?.width ?? Math.max(mmToScreenPx(page.widthMm), 120)
+  const winH = windowSize?.height ?? Math.max(mmToScreenPx(page.heightMm), 80)
   const win = new BrowserWindow({
     width: winW,
     height: winH,
@@ -215,7 +253,44 @@ export async function printLabel(
   try {
     await win.loadFile(htmlFile)
     await waitForImages(win)
+    return await win.webContents.printToPDF({
+      printBackground: true,
+      preferCSSPageSize: true,
+      pageSize: {
+        width: mmToMicrons(page.widthMm),
+        height: mmToMicrons(page.heightMm)
+      },
+      margins: { marginType: 'none' },
+      scale: 1
+    })
+  } finally {
+    win.close()
+  }
+}
 
+async function printHtmlSilent(
+  htmlFile: string,
+  page: { widthMm: number; heightMm: number },
+  device: string,
+  dpi = 203
+): Promise<void> {
+  const winW = Math.min(900, Math.max(mmToScreenPx(page.widthMm), 120))
+  const winH = Math.min(1200, Math.max(mmToScreenPx(page.heightMm), 80))
+  const win = new BrowserWindow({
+    width: winW,
+    height: winH,
+    useContentSize: true,
+    show: false,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: false
+    }
+  })
+
+  try {
+    await win.loadFile(htmlFile)
+    await waitForImages(win)
     await new Promise<void>((resolve, reject) => {
       win.webContents.print(
         {
@@ -224,10 +299,10 @@ export async function printLabel(
           deviceName: device,
           margins: { marginType: 'none' },
           pageSize: {
-            width: mmToMicrons(dims.widthMm),
-            height: mmToMicrons(dims.heightMm)
+            width: mmToMicrons(page.widthMm),
+            height: mmToMicrons(page.heightMm)
           },
-          dpi: { horizontal: dims.dpi, vertical: dims.dpi },
+          dpi: { horizontal: dpi, vertical: dpi },
           scaleFactor: 100,
           copies: 1
         },
@@ -242,19 +317,288 @@ export async function printLabel(
     })
   } finally {
     win.close()
-    try {
-      unlinkSync(htmlFile)
-    } catch {
-      /* ignorar */
-    }
-    if (barcode.path !== content.barcodeImagePath && existsSync(barcode.path)) {
+  }
+}
+
+async function deliverLabelDocument(
+  htmlFile: string,
+  page: { widthMm: number; heightMm: number },
+  device: string,
+  pdfDefaultName: string,
+  dpi = 203
+): Promise<'pdf' | 'print'> {
+  const pdf = await renderHtmlToPdf(htmlFile, page, {
+    width: Math.min(900, Math.max(mmToScreenPx(page.widthMm), 400)),
+    height: Math.min(1200, Math.max(mmToScreenPx(page.heightMm), 500))
+  })
+
+  if (isPdfVirtualPrinter(device)) {
+    await savePdfWithDialog(pdf, pdfDefaultName)
+    return 'pdf'
+  }
+
+  const dir = join(tmpdir(), 'pv-labels')
+  mkdirSync(dir, { recursive: true })
+  const pdfPath = join(dir, `${randomUUID()}.pdf`)
+  writeFileSync(pdfPath, pdf)
+
+  try {
+    await printPdfFileToPrinter(pdfPath, device)
+    return 'print'
+  } catch {
+    await printHtmlSilent(htmlFile, page, device, dpi)
+    return 'print'
+  } finally {
+    setTimeout(() => {
       try {
-        unlinkSync(barcode.path)
+        unlinkSync(pdfPath)
+      } catch {
+        /* ignorar */
+      }
+    }, 20000)
+  }
+}
+
+function cleanupBarcodeTemps(
+  barcodes: Array<{ path: string }>,
+  originals: string[]
+): void {
+  for (const b of barcodes) {
+    if (!originals.includes(b.path) && existsSync(b.path)) {
+      try {
+        unlinkSync(b.path)
       } catch {
         /* ignorar */
       }
     }
   }
+}
+
+/** Imprime una o varias etiquetas (tamaño real vía PDF). */
+export async function printLabels(
+  contents: LabelPrintContent[],
+  printerName: string,
+  dims: LabelDimensions,
+  alternatePrinter = ''
+): Promise<void> {
+  if (!contents.length) throw new Error('No hay etiquetas para imprimir')
+
+  const prepared = contents.map((content) => {
+    const barcode = prepareBarcodeImage(content.barcodeImagePath, dims, Boolean(content.priceText))
+    return { content, barcode }
+  })
+  const bodies = prepared.map(({ content, barcode }) =>
+    buildLabelBodyHtml(content, barcode, dims)
+  )
+  const htmlFile = writeTempHtml(buildLabelsDocumentHtml(bodies, dims))
+  const device = await resolvePrinterName(printerName, 'etiquetas', alternatePrinter)
+  const pdfName = `etiquetas-${dims.widthMm}x${dims.heightMm}mm.pdf`
+
+  try {
+    await deliverLabelDocument(
+      htmlFile,
+      { widthMm: dims.widthMm, heightMm: dims.heightMm },
+      device,
+      pdfName,
+      dims.dpi
+    )
+  } finally {
+    try {
+      unlinkSync(htmlFile)
+    } catch {
+      /* ignorar */
+    }
+    cleanupBarcodeTemps(
+      prepared.map((p) => p.barcode),
+      contents.map((c) => c.barcodeImagePath)
+    )
+  }
+}
+
+function buildA4SheetDocumentHtml(
+  cells: string[],
+  dims: LabelDimensions,
+  grid: ReturnType<typeof computeA4LabelGrid>
+): string {
+  const pages: string[] = []
+  const { perSheet, cols } = grid
+
+  for (let i = 0; i < cells.length; i += perSheet) {
+    const chunk = cells.slice(i, i + perSheet)
+    while (chunk.length < perSheet) {
+      chunk.push('<div class="label empty"></div>')
+    }
+    pages.push(
+      [
+        '<div class="sheet">',
+        `  <div class="grid" style="grid-template-columns:repeat(${cols}, ${dims.widthMm}mm);">`,
+        ...chunk.map((c) => `    ${c}`),
+        '  </div>',
+        '</div>'
+      ].join('\n')
+    )
+  }
+
+  return [
+    '<!DOCTYPE html>',
+    '<html>',
+    '<head>',
+    '  <meta charset="utf-8">',
+    '  <style>',
+    `    @page { size: ${A4_PAGE_WIDTH_MM}mm ${A4_PAGE_HEIGHT_MM}mm; margin: 0; }`,
+    '    * { box-sizing: border-box; margin: 0; padding: 0; }',
+    '    html, body { margin: 0; padding: 0; background: #fff;',
+    '      font-family: Arial, Helvetica, sans-serif; color: #000;',
+    '      -webkit-print-color-adjust: exact; print-color-adjust: exact; }',
+    `    .sheet { width: ${A4_PAGE_WIDTH_MM}mm; height: ${A4_PAGE_HEIGHT_MM}mm;`,
+    `      padding: ${A4_MARGIN_MM}mm; page-break-after: always; break-after: page; overflow: hidden; }`,
+    '    .sheet:last-child { page-break-after: auto; break-after: auto; }',
+    `    .grid { display: grid; gap: ${A4_GAP_MM}mm; justify-content: start; align-content: start; }`,
+    buildLabelCellCss(dims),
+    '    .label { border: 0.12mm dashed #bbb; }',
+    '    .label.empty { border-color: transparent; }',
+    '  </style>',
+    '</head>',
+    '<body>',
+    ...pages,
+    '</body>',
+    '</html>'
+  ].join('\n')
+}
+
+/** Genera el PDF de etiquetas (rollo o A4) sin imprimir. */
+export async function generateLabelsPdf(
+  contents: LabelPrintContent[],
+  dims: LabelDimensions,
+  mode: 'roll' | 'a4'
+): Promise<{ pdf: Buffer; sheets: number }> {
+  if (!contents.length) throw new Error('No hay etiquetas para previsualizar')
+
+  const prepared = contents.map((content) => {
+    const barcode = prepareBarcodeImage(content.barcodeImagePath, dims, Boolean(content.priceText))
+    return { content, barcode }
+  })
+
+  let htmlFile: string
+  let page: { widthMm: number; heightMm: number }
+  let sheets = 1
+
+  if (mode === 'a4') {
+    const grid = computeA4LabelGrid(dims.widthMm, dims.heightMm)
+    sheets = Math.ceil(contents.length / grid.perSheet)
+    const cells = prepared.map(({ content, barcode }) =>
+      buildLabelBodyHtml(content, barcode, dims)
+    )
+    htmlFile = writeTempHtml(buildA4SheetDocumentHtml(cells, dims, grid))
+    page = { widthMm: A4_PAGE_WIDTH_MM, heightMm: A4_PAGE_HEIGHT_MM }
+  } else {
+    const bodies = prepared.map(({ content, barcode }) =>
+      buildLabelBodyHtml(content, barcode, dims)
+    )
+    htmlFile = writeTempHtml(buildLabelsDocumentHtml(bodies, dims))
+    page = { widthMm: dims.widthMm, heightMm: dims.heightMm }
+    sheets = contents.length
+  }
+
+  try {
+    const pdf = await renderHtmlToPdf(htmlFile, page, {
+      width: Math.min(900, Math.max(mmToScreenPx(page.widthMm), 400)),
+      height: Math.min(1200, Math.max(mmToScreenPx(page.heightMm), 500))
+    })
+    return { pdf, sheets }
+  } finally {
+    try {
+      unlinkSync(htmlFile)
+    } catch {
+      /* ignorar */
+    }
+    cleanupBarcodeTemps(
+      prepared.map((p) => p.barcode),
+      contents.map((c) => c.barcodeImagePath)
+    )
+  }
+}
+
+/** Imprime etiquetas en hojas A4 (láser / inyección / PDF). */
+export async function printLabelsOnA4(
+  contents: LabelPrintContent[],
+  printerName: string,
+  dims: LabelDimensions
+): Promise<{ printed: number; sheets: number }> {
+  if (!contents.length) throw new Error('No hay etiquetas para imprimir')
+  if (!printerName.trim()) throw new Error('Seleccione una impresora para A4')
+
+  const { pdf, sheets } = await generateLabelsPdf(contents, dims, 'a4')
+  const device = printerName.trim()
+  const pdfName = `etiquetas-A4-${dims.widthMm}x${dims.heightMm}mm.pdf`
+
+  if (isPdfVirtualPrinter(device)) {
+    await savePdfWithDialog(pdf, pdfName)
+    return { printed: contents.length, sheets }
+  }
+
+  const dir = join(tmpdir(), 'pv-labels')
+  mkdirSync(dir, { recursive: true })
+  const pdfPath = join(dir, `${randomUUID()}.pdf`)
+  writeFileSync(pdfPath, pdf)
+
+  try {
+    try {
+      await printPdfFileToPrinter(pdfPath, device)
+    } catch {
+      const grid = computeA4LabelGrid(dims.widthMm, dims.heightMm)
+      const prepared = contents.map((content) => {
+        const barcode = prepareBarcodeImage(
+          content.barcodeImagePath,
+          dims,
+          Boolean(content.priceText)
+        )
+        return { content, barcode }
+      })
+      const cells = prepared.map(({ content, barcode }) =>
+        buildLabelBodyHtml(content, barcode, dims)
+      )
+      const htmlFile = writeTempHtml(buildA4SheetDocumentHtml(cells, dims, grid))
+      try {
+        await printHtmlSilent(
+          htmlFile,
+          { widthMm: A4_PAGE_WIDTH_MM, heightMm: A4_PAGE_HEIGHT_MM },
+          device,
+          300
+        )
+      } finally {
+        try {
+          unlinkSync(htmlFile)
+        } catch {
+          /* ignorar */
+        }
+        cleanupBarcodeTemps(
+          prepared.map((p) => p.barcode),
+          contents.map((c) => c.barcodeImagePath)
+        )
+      }
+    }
+  } finally {
+    setTimeout(() => {
+      try {
+        unlinkSync(pdfPath)
+      } catch {
+        /* ignorar */
+      }
+    }, 20000)
+  }
+
+  return { printed: contents.length, sheets }
+}
+
+/** Imprime una etiqueta autoadhesiva (tamaño y DPI según configuración). */
+export async function printLabel(
+  content: LabelPrintContent,
+  printerName: string,
+  dims: LabelDimensions,
+  alternatePrinter = ''
+): Promise<void> {
+  await printLabels([content], printerName, dims, alternatePrinter)
 }
 
 export async function printLabel50x25(
@@ -288,38 +632,16 @@ export async function printTestLabel(
 
   const htmlFile = writeTempHtml(html)
   const device = await resolvePrinterName(printerName, 'etiquetas', alternatePrinter)
-  const win = new BrowserWindow({
-    width: mmToScreenPx(dims.widthMm),
-    height: mmToScreenPx(dims.heightMm),
-    show: false,
-    webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: false }
-  })
 
   try {
-    await win.loadFile(htmlFile)
-    await new Promise<void>((resolve, reject) => {
-      win.webContents.print(
-        {
-          silent: true,
-          printBackground: true,
-          deviceName: device,
-          margins: { marginType: 'none' },
-          pageSize: {
-            width: mmToMicrons(dims.widthMm),
-            height: mmToMicrons(dims.heightMm)
-          },
-          dpi: { horizontal: dims.dpi, vertical: dims.dpi },
-          scaleFactor: 100,
-          copies: 1
-        },
-        (success, failureReason) => {
-          if (!success) reject(new Error(failureReason ?? 'No se pudo imprimir'))
-          else resolve()
-        }
-      )
-    })
+    await deliverLabelDocument(
+      htmlFile,
+      { widthMm: dims.widthMm, heightMm: dims.heightMm },
+      device,
+      `etiqueta-prueba-${dims.widthMm}x${dims.heightMm}mm.pdf`,
+      dims.dpi
+    )
   } finally {
-    win.close()
     try {
       unlinkSync(htmlFile)
     } catch {

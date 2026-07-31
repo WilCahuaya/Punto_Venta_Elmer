@@ -12,6 +12,8 @@ files:
   - '!dist/**'
   - '!electron.vite.config.*'
   - '!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
+asarUnpack:
+  - '**/node_modules/pdfmake/fonts/**'
 extraResources:
   - from: database
     to: database

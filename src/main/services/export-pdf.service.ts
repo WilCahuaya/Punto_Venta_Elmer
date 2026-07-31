@@ -1,21 +1,38 @@
 import { writeFileSync } from 'fs'
+import { join, dirname } from 'path'
 import type { ReportSummary } from '@shared/types/reports'
 import { formatMoney } from '@shared/lib/currency'
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfMake = require('pdfmake/build/pdfmake.js') as {
-  vfs: Record<string, string>
+const pdfMake = require('pdfmake') as {
+  setLocalAccessPolicy: (cb: (path: string) => boolean) => void
+  setUrlAccessPolicy: (cb: ((url: string) => boolean) | undefined) => void
+  addFonts: (fonts: Record<string, Record<string, string>>) => void
   createPdf: (doc: unknown) => {
-    getBuffer: (cb: (buffer: Buffer) => void) => void
+    getBuffer: () => Promise<Buffer>
+    write: (filePath: string) => Promise<void>
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfFonts = require('pdfmake/build/vfs_fonts.js') as {
-  pdfMake?: { vfs: Record<string, string> }
-  vfs?: Record<string, string>
-}
 
-pdfMake.vfs = pdfFonts.pdfMake?.vfs ?? pdfFonts.vfs ?? {}
+let fontsReady = false
+
+function ensurePdfFonts(): void {
+  if (fontsReady) return
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const pdfmakeRoot = dirname(require.resolve('pdfmake/package.json'))
+  const roboto = join(pdfmakeRoot, 'fonts', 'Roboto')
+  pdfMake.setLocalAccessPolicy(() => true)
+  pdfMake.setUrlAccessPolicy(() => false)
+  pdfMake.addFonts({
+    Roboto: {
+      normal: join(roboto, 'Roboto-Regular.ttf'),
+      bold: join(roboto, 'Roboto-Medium.ttf'),
+      italics: join(roboto, 'Roboto-Italic.ttf'),
+      bolditalics: join(roboto, 'Roboto-MediumItalic.ttf')
+    }
+  })
+  fontsReady = true
+}
 
 function money(n: number, symbol: string): string {
   return formatMoney(n, symbol)
@@ -27,17 +44,10 @@ export async function writeReportPdf(
   companyName: string,
   currencySymbol: string
 ): Promise<void> {
+  ensurePdfFonts()
   const doc = buildDocDefinition(report, companyName, currencySymbol)
-  return new Promise((resolve, reject) => {
-    pdfMake.createPdf(doc).getBuffer((buffer: Buffer) => {
-      try {
-        writeFileSync(filePath, buffer)
-        resolve()
-      } catch (e) {
-        reject(e)
-      }
-    })
-  })
+  const buffer = await pdfMake.createPdf(doc).getBuffer()
+  writeFileSync(filePath, buffer)
 }
 
 function buildDocDefinition(
@@ -133,6 +143,6 @@ function buildDocDefinition(
       subheader: { fontSize: 14, margin: [0, 4, 0, 8] },
       section: { fontSize: 12, bold: true, margin: [0, 12, 0, 6] }
     },
-    defaultStyle: { fontSize: 9 }
+    defaultStyle: { fontSize: 9, font: 'Roboto' }
   }
 }

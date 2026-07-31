@@ -6,6 +6,7 @@ import type { ThemeMode } from '@shared/types/api'
 import { Badge } from '../../components/ui/Badge'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
+import { NumberInput } from '../../components/ui/NumberInput'
 import { Select } from '../../components/ui/Select'
 import { useLogoImage } from '../../hooks/useLogoImage'
 import { playScanSound, playSuccessSound } from '../../lib/sounds'
@@ -122,7 +123,13 @@ export function SettingsPage(): React.JSX.Element {
     }
     const result = await window.api.settings.testLabelPrint()
     if (!result.ok) setError(result.error)
-    else setMessage('Etiqueta de prueba enviada a la impresora')
+    else {
+      const dims =
+        labelPreset === 'custom'
+          ? `${labelWidthMm}×${labelHeightMm}`
+          : labelPreset.replace('x', '×')
+      setMessage(`Etiqueta de prueba lista (${dims} mm)`)
+    }
   }
 
   async function handleTestPrint(): Promise<void> {
@@ -318,23 +325,27 @@ export function SettingsPage(): React.JSX.Element {
               onChange={setLabelPreset}
               options={LABEL_PRESETS.map((p) => ({ value: p.id, label: p.label }))}
             />
+            <p className="text-xs text-[rgb(var(--text-muted))]">
+              El PDF usará exactamente este tamaño. Con «Microsoft Print to PDF» se abrirá un diálogo
+              para guardar el archivo.
+            </p>
             {labelPreset === 'custom' && (
               <div className="grid gap-4 sm:grid-cols-2">
-                <Input
+                <NumberInput
                   label="Ancho (mm)"
-                  type="number"
-                  min={20}
+                  min={15}
                   max={120}
-                  value={String(labelWidthMm)}
-                  onChange={(e) => setLabelWidthMm(Number(e.target.value) || 50)}
+                  emptyValue={50}
+                  value={labelWidthMm}
+                  onChange={setLabelWidthMm}
                 />
-                <Input
+                <NumberInput
                   label="Alto (mm)"
-                  type="number"
-                  min={10}
+                  min={8}
                   max={80}
-                  value={String(labelHeightMm)}
-                  onChange={(e) => setLabelHeightMm(Number(e.target.value) || 25)}
+                  emptyValue={25}
+                  value={labelHeightMm}
+                  onChange={setLabelHeightMm}
                 />
               </div>
             )}

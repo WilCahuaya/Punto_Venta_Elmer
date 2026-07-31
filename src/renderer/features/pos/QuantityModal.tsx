@@ -22,6 +22,7 @@ export function QuantityModal({
   onConfirm
 }: QuantityModalProps): React.JSX.Element | null {
   const [qty, setQty] = useState(1)
+  const [qtyText, setQtyText] = useState('1')
   const [priceChoice, setPriceChoice] = useState<PriceChoice>('retail')
   const [manualPrice, setManualPrice] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -32,11 +33,30 @@ export function QuantityModal({
   useEffect(() => {
     if (open && product) {
       setQty(1)
+      setQtyText('1')
       setPriceChoice('retail')
       setManualPrice(product.priceRetail)
       setTimeout(() => inputRef.current?.select(), 50)
     }
   }, [open, product?.id])
+
+  function commitQty(): void {
+    if (!product) return
+    const trimmed = qtyText.trim()
+    if (trimmed === '') {
+      setQty(1)
+      setQtyText('1')
+      return
+    }
+    const n = Number(trimmed)
+    if (!Number.isFinite(n)) {
+      setQtyText(String(qty))
+      return
+    }
+    const next = Math.min(product.stock, Math.max(1, Math.floor(n)))
+    setQty(next)
+    setQtyText(String(next))
+  }
 
   if (!open || !product) return null
 
@@ -138,23 +158,38 @@ export function QuantityModal({
             <Button
               type="button"
               variant="secondary"
-              onClick={() => setQty((q) => Math.max(1, q - 1))}
+              onClick={() => {
+                setQty((q) => {
+                  const next = Math.max(1, q - 1)
+                  setQtyText(String(next))
+                  return next
+                })
+              }}
             >
               −
             </Button>
             <input
               ref={inputRef}
-              type="number"
-              min={1}
-              max={product.stock}
-              value={qty}
-              onChange={(e) => setQty(Number(e.target.value))}
+              type="text"
+              inputMode="numeric"
+              value={qtyText}
+              onChange={(e) => setQtyText(e.target.value)}
+              onBlur={commitQty}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.currentTarget.blur()
+              }}
               className="w-full rounded-lg border border-surface-border bg-surface-elevated px-4 py-3 text-center text-2xl font-semibold tabular-nums focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
             />
             <Button
               type="button"
               variant="secondary"
-              onClick={() => setQty((q) => Math.min(product.stock, q + 1))}
+              onClick={() => {
+                setQty((q) => {
+                  const next = Math.min(product.stock, q + 1)
+                  setQtyText(String(next))
+                  return next
+                })
+              }}
             >
               +
             </Button>

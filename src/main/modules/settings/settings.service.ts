@@ -110,10 +110,10 @@ export function updateSettings(input: SettingsUpdateInput): ApiResult<AppSetting
     upsertSetting(db, 'label_preset', input.labelPreset.trim() || '50x25')
   }
   if (input.labelWidthMm !== undefined) {
-    upsertSetting(db, 'label_width_mm', String(Math.max(20, Math.min(120, input.labelWidthMm))))
+    upsertSetting(db, 'label_width_mm', String(Math.max(15, Math.min(120, input.labelWidthMm))))
   }
   if (input.labelHeightMm !== undefined) {
-    upsertSetting(db, 'label_height_mm', String(Math.max(10, Math.min(80, input.labelHeightMm))))
+    upsertSetting(db, 'label_height_mm', String(Math.max(8, Math.min(80, input.labelHeightMm))))
   }
   if (input.labelDpi !== undefined) {
     upsertSetting(db, 'label_dpi', String(parseLabelDpi(String(input.labelDpi))))

@@ -30,6 +30,8 @@ export interface AppSettingsFull {
   labelDpi: LabelDpi
   /** Ancho del logo en ticket (% del ancho útil del rollo, 40–100). */
   ticketLogoWidthPercent: number
+  /** Texto final del ticket (slogan, verso bíblico, etc.). */
+  ticketSlogan: string
 }
 
 export interface SettingsUpdateInput {
@@ -46,4 +48,5 @@ export interface SettingsUpdateInput {
   labelHeightMm?: number
   labelDpi?: LabelDpi
   ticketLogoWidthPercent?: number
+  ticketSlogan?: string
 }

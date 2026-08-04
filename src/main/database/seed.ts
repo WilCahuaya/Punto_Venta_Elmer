@@ -31,6 +31,7 @@ export function seedDatabase(database: Database.Database): void {
     label_height_mm: '25',
     label_dpi: '203',
     ticket_logo_width_percent: '65',
+    ticket_slogan: '',
     backup_auto_enabled: 'true',
     backup_retention_days: '30'
   }

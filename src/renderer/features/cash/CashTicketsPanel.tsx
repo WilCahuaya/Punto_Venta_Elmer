@@ -149,8 +149,8 @@ export function CashTicketsPanel({
   return (
     <div>
       <p className="mb-4 text-sm text-[rgb(var(--text-muted))]">
-        Tickets del turno seleccionado. Para análisis por fecha use{' '}
-        <span className="text-brand">Reportes</span>.
+        Tickets del turno seleccionado. Para buscar por fecha o reimprimir, vaya a{' '}
+        <span className="text-brand">Inicio</span>.
       </p>
 
       {message && (

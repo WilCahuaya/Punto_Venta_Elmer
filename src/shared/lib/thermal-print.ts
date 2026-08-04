@@ -1,7 +1,10 @@
 /** Ancho de rollo térmico para tickets (POS). */
 export type ThermalPaperSize = '58mm' | '80mm'
 
-/** Ancho en píxeles lógicos (~203 DPI) para electron-pos-printer / ventana HTML. */
+/**
+ * Ancho en píxeles lógicos @ ~96 DPI (CSS) para preview HTML / electron-pos-printer.
+ * 80mm ≈ 80/25.4*96 = 302 px — no confundir con dots ESC/POS.
+ */
 export const TICKET_WIDTH_PX: Record<ThermalPaperSize, number> = {
   '58mm': 219,
   '80mm': 302
@@ -10,13 +13,28 @@ export const TICKET_WIDTH_PX: Record<ThermalPaperSize, number> = {
 /** Alias histórico. */
 export const PAPER_WIDTH_PX = TICKET_WIDTH_PX
 
-/** Ancho útil imprimible (márgenes ~8 px c/u). */
+/** Ancho útil imprimible en px CSS (márgenes ~8 px c/u). */
 export const TICKET_PRINTABLE_WIDTH_PX: Record<ThermalPaperSize, number> = {
   '58mm': TICKET_WIDTH_PX['58mm'] - 16,
   '80mm': TICKET_WIDTH_PX['80mm'] - 16
 }
 
 export const PAPER_PRINTABLE_WIDTH_PX = TICKET_PRINTABLE_WIDTH_PX
+
+/**
+ * Ancho imprimible ESC/POS en dots @ 203 DPI (8 dots/mm).
+ * Es el tamaño real al enviar raster GS v 0 por USB RAW.
+ */
+export const ESC_POS_PRINTABLE_WIDTH_DOTS: Record<ThermalPaperSize, number> = {
+  '58mm': 384,
+  '80mm': 576
+}
+
+/**
+ * Compensa DPI vertical distinto en muchas POS-80 (círculos → óvalos anchos).
+ * 203/180 ≈ 1.128
+ */
+export const ESC_POS_RASTER_Y_SCALE = 203 / 180
 
 export const LABEL_DPI_OPTIONS = [203, 300] as const
 export type LabelDpi = (typeof LABEL_DPI_OPTIONS)[number]

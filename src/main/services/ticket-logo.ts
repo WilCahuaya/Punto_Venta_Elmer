@@ -3,7 +3,8 @@ import { existsSync, mkdtempSync, unlinkSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import {
-  PAPER_PRINTABLE_WIDTH_PX,
+  ESC_POS_PRINTABLE_WIDTH_DOTS,
+  PAPER_WIDTH_PX,
   parseThermalPaperSize,
   type ThermalPaperSize
 } from './pos-print-options'
@@ -14,32 +15,39 @@ export function parseTicketLogoWidthPercent(value: string | undefined): number {
   return Math.min(100, Math.max(40, n))
 }
 
-/** Ancho máximo del logo según rollo y porcentaje elegido en configuración. */
-export function getTicketLogoMaxWidthPx(
+/** Ancho del logo en dots ESC/POS según rollo y % elegido. */
+export function getTicketLogoWidthDots(
   paper: ThermalPaperSize,
   widthPercent: number
 ): number {
-  const printable = PAPER_PRINTABLE_WIDTH_PX[paper]
+  const printable = ESC_POS_PRINTABLE_WIDTH_DOTS[paper]
   const pct = parseTicketLogoWidthPercent(String(widthPercent))
   return Math.max(48, Math.floor((printable * pct) / 100))
 }
 
-const MAX_LOGO_HEIGHT_PX: Record<ThermalPaperSize, number> = {
-  '58mm': 56,
-  '80mm': 72
+/** Convierte dots ESC/POS → px CSS para fallback GDI/HTML. */
+export function escPosDotsToCssPx(
+  dots: number,
+  paper: ThermalPaperSize
+): number {
+  const escW = ESC_POS_PRINTABLE_WIDTH_DOTS[paper]
+  const cssW = PAPER_WIDTH_PX[paper]
+  return Math.max(1, Math.round((dots * cssW) / escW))
 }
 
 export interface PreparedTicketLogo {
   path: string
+  /** Ancho en dots ESC/POS (tamaño real del PNG). */
   width: number
+  /** Alto en dots ESC/POS (proporción 1:1 del original). */
   height: number
   /** Archivo temporal; eliminar tras imprimir. */
   tempFile: string
 }
 
 /**
- * Escala el logo al ancho del ticket antes de imprimir.
- * electron-pos-printer a veces ignora width/height y usa el tamaño original del archivo.
+ * Escala el logo al % del ancho ESC/POS (203 DPI).
+ * El PNG queda en dots reales; ESC/POS lo imprime 1:1.
  */
 export function prepareTicketLogoForPrint(
   absoluteLogoPath: string,
@@ -54,25 +62,22 @@ export function prepareTicketLogoForPrint(
   const { width: srcW, height: srcH } = img.getSize()
   if (srcW < 1 || srcH < 1) return null
 
-  const maxWidth = getTicketLogoMaxWidthPx(paper, widthPercent)
-  const maxHeight = MAX_LOGO_HEIGHT_PX[paper]
+  let targetW = getTicketLogoWidthDots(paper, widthPercent)
+  // ESC/POS GS v 0 exige ancho múltiplo de 8 dots
+  targetW = Math.max(8, Math.ceil(targetW / 8) * 8)
 
-  let targetW = srcW
-  let targetH = srcH
+  let targetH = Math.max(1, Math.round((srcH * targetW) / srcW))
 
-  if (targetW > maxWidth) {
-    targetH = Math.round((targetH * maxWidth) / targetW)
-    targetW = maxWidth
-  }
+  // Tope de alto proporcional (logos muy alargados)
+  const maxHeight = Math.round(targetW * 1.25)
   if (targetH > maxHeight) {
-    targetW = Math.round((targetW * maxHeight) / targetH)
     targetH = maxHeight
+    targetW = Math.max(8, Math.ceil(((srcW * targetH) / srcH) / 8) * 8)
+    targetH = Math.max(1, Math.round((srcH * targetW) / srcW))
+    if (targetH > maxHeight) targetH = maxHeight
   }
 
-  const resized =
-    targetW !== srcW || targetH !== srcH
-      ? img.resize({ width: targetW, height: targetH, quality: 'better' })
-      : img
+  const resized = img.resize({ width: targetW, height: targetH, quality: 'better' })
 
   const dir = mkdtempSync(join(tmpdir(), 'pv-ticket-logo-'))
   const tempFile = join(dir, 'logo.png')

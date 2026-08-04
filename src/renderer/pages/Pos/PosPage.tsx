@@ -6,6 +6,7 @@ import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { MoneyDisplay } from '../../components/ui/MoneyDisplay'
 import { PaymentModal } from '../../features/pos/PaymentModal'
+import { PrintTicketPromptModal } from '../../features/pos/PrintTicketPromptModal'
 import { QuantityModal } from '../../features/pos/QuantityModal'
 import { ServiceModal } from '../../features/pos/ServiceModal'
 import { playErrorSound, playScanSound, playSuccessSound } from '../../lib/sounds'
@@ -42,6 +43,10 @@ export function PosPage(): React.JSX.Element {
   const [serviceProductId, setServiceProductId] = useState<number | null>(null)
   const [statusMsg, setStatusMsg] = useState<string | null>(null)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
+  const [printPrompt, setPrintPrompt] = useState<{
+    saleId: number
+    ticketNumber: string
+  } | null>(null)
 
   const subtotal = getSubtotal()
   const total = getTotal()
@@ -57,8 +62,9 @@ export function PosPage(): React.JSX.Element {
   }, [successMsg])
 
   useEffect(() => {
-    if (isOpen) focusBarcode()
-  }, [isOpen, focusBarcode, qtyProduct, paymentOpen, serviceOpen])
+    if (!isOpen || qtyProduct || paymentOpen || serviceOpen || printPrompt) return
+    focusBarcode()
+  }, [isOpen, focusBarcode, qtyProduct, paymentOpen, serviceOpen, printPrompt])
 
   useEffect(() => {
     if (!isOpen) return
@@ -165,17 +171,34 @@ export function PosPage(): React.JSX.Element {
 
     if (soundsEnabled) playSuccessSound()
 
-    const printRes = await window.api.sales.printTicket(result.data.id)
     setStatusMsg(null)
-    setSuccessMsg(
-      printRes.ok
-        ? `¡Venta realizada exitosamente! · Ticket ${result.data.ticketNumber}`
-        : `¡Venta realizada exitosamente! · Ticket ${result.data.ticketNumber} (sin imprimir: ${printRes.error})`
-    )
-
     clearCart()
     setPaymentOpen(false)
     void refreshCash()
+    setPrintPrompt({
+      saleId: result.data.id,
+      ticketNumber: result.data.ticketNumber
+    })
+  }
+
+  async function handlePrintTicketConfirm(printerName: string): Promise<void> {
+    if (!printPrompt) return
+    const { saleId, ticketNumber } = printPrompt
+    const printRes = await window.api.sales.printTicket(saleId, printerName)
+    setPrintPrompt(null)
+    setSuccessMsg(
+      printRes.ok
+        ? `¡Venta realizada exitosamente! · Ticket ${ticketNumber}`
+        : `¡Venta realizada exitosamente! · Ticket ${ticketNumber} (sin imprimir: ${printRes.error})`
+    )
+    focusBarcode()
+  }
+
+  function handleSkipTicketPrint(): void {
+    if (!printPrompt) return
+    const { ticketNumber } = printPrompt
+    setPrintPrompt(null)
+    setSuccessMsg(`¡Venta realizada exitosamente! · Ticket ${ticketNumber} (sin imprimir)`)
     focusBarcode()
   }
 
@@ -441,6 +464,14 @@ export function PosPage(): React.JSX.Element {
         total={total}
         onClose={() => setPaymentOpen(false)}
         onConfirm={handlePayment}
+      />
+
+      <PrintTicketPromptModal
+        open={!!printPrompt}
+        saleId={printPrompt?.saleId ?? null}
+        ticketNumber={printPrompt?.ticketNumber ?? ''}
+        onPrint={handlePrintTicketConfirm}
+        onSkip={handleSkipTicketPrint}
       />
     </div>
   )

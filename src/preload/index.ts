@@ -79,7 +79,8 @@ const api = {
   },
   sales: {
     create: (input: CreateSaleInput) => ipcRenderer.invoke(IPC_CHANNELS.SALES_CREATE, input),
-    printTicket: (saleId: number) => ipcRenderer.invoke(IPC_CHANNELS.SALES_PRINT_TICKET, saleId),
+    printTicket: (saleId: number, printerName?: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.SALES_PRINT_TICKET, saleId, printerName),
     listBySession: (sessionId: number) =>
       ipcRenderer.invoke(IPC_CHANNELS.SALES_LIST_BY_SESSION, sessionId),
     getDetail: (id: number) => ipcRenderer.invoke(IPC_CHANNELS.SALES_GET_DETAIL, id),

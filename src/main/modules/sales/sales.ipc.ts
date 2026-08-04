@@ -16,11 +16,14 @@ export function registerSalesIpc(): void {
   ipcMain.handle(IPC_CHANNELS.SALES_CREATE, (_e, input: CreateSaleInput) =>
     createSaleService(input)
   )
-  ipcMain.handle(IPC_CHANNELS.SALES_PRINT_TICKET, async (_e, saleId: number) => {
-    const result = await printSaleTicket(saleId)
-    if (!result.ok) return { ok: false as const, error: result.error ?? 'Error de impresión' }
-    return { ok: true as const, data: null }
-  })
+  ipcMain.handle(
+    IPC_CHANNELS.SALES_PRINT_TICKET,
+    async (_e, saleId: number, printerName?: string) => {
+      const result = await printSaleTicket(saleId, printerName)
+      if (!result.ok) return { ok: false as const, error: result.error ?? 'Error de impresión' }
+      return { ok: true as const, data: null }
+    }
+  )
   ipcMain.handle(IPC_CHANNELS.PRODUCTS_SEARCH_POS, (_e, query: string) =>
     searchProductsPosService(query)
   )

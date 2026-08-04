@@ -21,6 +21,7 @@ export function SettingsPage(): React.JSX.Element {
   const [soundsEnabled, setSoundsEnabled] = useState(store.soundsEnabled)
   const [companyName, setCompanyName] = useState(store.companyName)
   const [companyAddress, setCompanyAddress] = useState(store.companyAddress)
+  const [ticketSlogan, setTicketSlogan] = useState(store.ticketSlogan)
   const [printerTicket, setPrinterTicket] = useState(store.printerTicket)
   const [printerLabels, setPrinterLabels] = useState(store.printerLabels)
   const [printerPaperWidth, setPrinterPaperWidth] = useState<'58mm' | '80mm'>(
@@ -46,6 +47,7 @@ export function SettingsPage(): React.JSX.Element {
     setSoundsEnabled(store.soundsEnabled)
     setCompanyName(store.companyName)
     setCompanyAddress(store.companyAddress)
+    setTicketSlogan(store.ticketSlogan)
     setPrinterTicket(store.printerTicket)
     setPrinterLabels(store.printerLabels)
     setPrinterPaperWidth(store.printerPaperWidth)
@@ -138,6 +140,7 @@ export function SettingsPage(): React.JSX.Element {
       printerTicket,
       printerPaperWidth,
       ticketLogoWidthPercent,
+      ticketSlogan,
       companyName,
       companyAddress,
       currencySymbol
@@ -164,6 +167,7 @@ export function SettingsPage(): React.JSX.Element {
       soundsEnabled,
       companyName,
       companyAddress,
+      ticketSlogan,
       printerTicket,
       printerLabels,
       printerPaperWidth,
@@ -218,6 +222,22 @@ export function SettingsPage(): React.JSX.Element {
               onChange={(e) => setCompanyAddress(e.target.value)}
               placeholder="Opcional — aparece en el ticket"
             />
+            <label className="flex flex-col gap-1.5 text-sm">
+              <span className="font-medium text-[rgb(var(--text))]">
+                Slogan del ticket
+              </span>
+              <textarea
+                value={ticketSlogan}
+                onChange={(e) => setTicketSlogan(e.target.value.slice(0, 280))}
+                rows={3}
+                maxLength={280}
+                placeholder="Ej. «El Señor es mi pastor; nada me faltará.» — Salmo 23:1"
+                className="rounded-lg border border-surface-border bg-surface-elevated px-3 py-2.5 text-[rgb(var(--text))] placeholder:text-[rgb(var(--text-muted))] focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+              />
+              <span className="text-xs text-[rgb(var(--text-muted))]">
+                Aparece al final, debajo de «¡Gracias por su compra!» ({ticketSlogan.length}/280)
+              </span>
+            </label>
             <div>
               <p className="mb-2 text-sm font-medium">Logo (ticket)</p>
               <p className="mb-2 text-xs text-[rgb(var(--text-muted))]">
@@ -233,10 +253,7 @@ export function SettingsPage(): React.JSX.Element {
                     src={logoUrl}
                     alt="Logo en ticket"
                     className="mx-auto block h-auto object-contain"
-                    style={{
-                      width: `${ticketLogoWidthPercent}%`,
-                      maxHeight: printerPaperWidth === '80mm' ? 72 : 56
-                    }}
+                    style={{ width: `${ticketLogoWidthPercent}%` }}
                   />
                 ) : (
                   <p className="py-6 text-center text-xs text-[rgb(var(--text-muted))]">

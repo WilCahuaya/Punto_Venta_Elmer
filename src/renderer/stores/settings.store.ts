@@ -29,6 +29,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   labelHeightMm: 25,
   labelDpi: 203,
   ticketLogoWidthPercent: 65,
+  ticketSlogan: '',
   hydrated: false,
 
   applyFromServer: (data) => {
@@ -56,7 +57,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       labelWidthMm: input.labelWidthMm,
       labelHeightMm: input.labelHeightMm,
       labelDpi: input.labelDpi,
-      ticketLogoWidthPercent: input.ticketLogoWidthPercent
+      ticketLogoWidthPercent: input.ticketLogoWidthPercent,
+      ticketSlogan: input.ticketSlogan
     })
     if (!result.ok) return { ok: false, error: result.error }
     get().applyFromServer(result.data)

@@ -33,6 +33,7 @@ const ALLOWED_KEYS = new Set([
   'label_height_mm',
   'label_dpi',
   'ticket_logo_width_percent',
+  'ticket_slogan',
   'backup_auto_enabled',
   'backup_retention_days'
 ])
@@ -58,7 +59,8 @@ function mapSettings(map: Record<string, string>): AppSettingsFull {
     labelWidthMm: Number(map.label_width_mm ?? 50) || 50,
     labelHeightMm: Number(map.label_height_mm ?? 25) || 25,
     labelDpi: parseLabelDpi(map.label_dpi),
-    ticketLogoWidthPercent: parseTicketLogoWidthPercent(map.ticket_logo_width_percent)
+    ticketLogoWidthPercent: parseTicketLogoWidthPercent(map.ticket_logo_width_percent),
+    ticketSlogan: map.ticket_slogan ?? ''
   }
 }
 
@@ -124,6 +126,9 @@ export function updateSettings(input: SettingsUpdateInput): ApiResult<AppSetting
       'ticket_logo_width_percent',
       String(parseTicketLogoWidthPercent(String(input.ticketLogoWidthPercent)))
     )
+  }
+  if (input.ticketSlogan !== undefined) {
+    upsertSetting(db, 'ticket_slogan', input.ticketSlogan.trim().slice(0, 280))
   }
 
   return getSettings()

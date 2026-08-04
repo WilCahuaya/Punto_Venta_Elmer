@@ -1,4 +1,6 @@
 import {
+  ESC_POS_PRINTABLE_WIDTH_DOTS,
+  ESC_POS_RASTER_Y_SCALE,
   PAPER_WIDTH_PX,
   PAPER_PRINTABLE_WIDTH_PX,
   parseThermalPaperSize,
@@ -6,7 +8,13 @@ import {
 } from '@shared/lib/thermal-print'
 
 export type { ThermalPaperSize }
-export { PAPER_WIDTH_PX, PAPER_PRINTABLE_WIDTH_PX, parseThermalPaperSize }
+export {
+  ESC_POS_PRINTABLE_WIDTH_DOTS,
+  ESC_POS_RASTER_Y_SCALE,
+  PAPER_WIDTH_PX,
+  PAPER_PRINTABLE_WIDTH_PX,
+  parseThermalPaperSize
+}
 
 export interface PosPrintLine {
   type?: string

@@ -227,3 +227,204 @@ export function a4SheetsNeeded(labelCount: number, perSheet: number): number {
   if (labelCount <= 0 || perSheet <= 0) return 0
   return Math.ceil(labelCount / perSheet)
 }
+
+export function a4UsableSizeMm(): { widthMm: number; heightMm: number } {
+  return {
+    widthMm: A4_PAGE_WIDTH_MM - A4_MARGIN_MM * 2,
+    heightMm: A4_PAGE_HEIGHT_MM - A4_MARGIN_MM * 2
+  }
+}
+
+export interface A4PackedLabel {
+  index: number
+  sheet: number
+  xMm: number
+  yMm: number
+  widthMm: number
+  heightMm: number
+}
+
+export interface A4PackResult {
+  placements: A4PackedLabel[]
+  sheets: number
+}
+
+interface FreeRect {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+function roundPackMm(n: number): number {
+  return Math.round(n * 100) / 100
+}
+
+function rectsOverlap(a: FreeRect, b: FreeRect): boolean {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
+}
+
+function splitFreeRect(rect: FreeRect, used: FreeRect): FreeRect[] {
+  if (!rectsOverlap(rect, used)) return [rect]
+  const out: FreeRect[] = []
+  if (used.x > rect.x) {
+    out.push({ x: rect.x, y: rect.y, w: used.x - rect.x, h: rect.h })
+  }
+  const usedRight = used.x + used.w
+  const rectRight = rect.x + rect.w
+  if (usedRight < rectRight) {
+    out.push({ x: usedRight, y: rect.y, w: rectRight - usedRight, h: rect.h })
+  }
+  if (used.y > rect.y) {
+    out.push({ x: rect.x, y: rect.y, w: rect.w, h: used.y - rect.y })
+  }
+  const usedBottom = used.y + used.h
+  const rectBottom = rect.y + rect.h
+  if (usedBottom < rectBottom) {
+    out.push({ x: rect.x, y: usedBottom, w: rect.w, h: rectBottom - usedBottom })
+  }
+  return out.filter((r) => r.w >= 0.5 && r.h >= 0.5)
+}
+
+function pruneFreeRects(rects: FreeRect[]): FreeRect[] {
+  const kept: FreeRect[] = []
+  for (let i = 0; i < rects.length; i++) {
+    const a = rects[i]
+    let contained = false
+    for (let j = 0; j < rects.length; j++) {
+      if (i === j) continue
+      const b = rects[j]
+      const inside =
+        a.x >= b.x - 0.01 &&
+        a.y >= b.y - 0.01 &&
+        a.x + a.w <= b.x + b.w + 0.01 &&
+        a.y + a.h <= b.y + b.h + 0.01
+      if (!inside) continue
+      const same =
+        Math.abs(a.x - b.x) < 0.01 &&
+        Math.abs(a.y - b.y) < 0.01 &&
+        Math.abs(a.w - b.w) < 0.01 &&
+        Math.abs(a.h - b.h) < 0.01
+      if (same && i > j) {
+        contained = true
+        break
+      }
+      if (!same) {
+        contained = true
+        break
+      }
+    }
+    if (!contained) kept.push(a)
+  }
+  return kept
+}
+
+function findBestFit(free: FreeRect[], widthMm: number, heightMm: number): FreeRect | null {
+  let best: FreeRect | null = null
+  let bestShort = Infinity
+  let bestLong = Infinity
+  for (const rect of free) {
+    if (rect.w + 0.01 < widthMm || rect.h + 0.01 < heightMm) continue
+    const leftoverW = rect.w - widthMm
+    const leftoverH = rect.h - heightMm
+    const short = Math.min(leftoverW, leftoverH)
+    const long = Math.max(leftoverW, leftoverH)
+    if (short < bestShort - 0.01 || (Math.abs(short - bestShort) < 0.01 && long < bestLong)) {
+      best = rect
+      bestShort = short
+      bestLong = long
+    }
+  }
+  return best
+}
+
+function placeOnSheet(free: FreeRect[], x: number, y: number, widthMm: number, heightMm: number): FreeRect[] {
+  const used: FreeRect = {
+    x,
+    y,
+    w: widthMm + A4_GAP_MM,
+    h: heightMm + A4_GAP_MM
+  }
+  const split: FreeRect[] = []
+  for (const rect of free) {
+    split.push(...splitFreeRect(rect, used))
+  }
+  return pruneFreeRects(split)
+}
+
+/**
+ * Coloca etiquetas de distinto tamaño en hojas A4 (MaxRects / best short side).
+ * Las coordenadas son relativas al área útil (después del margen).
+ */
+export function packA4Labels(
+  sizes: Array<{ widthMm: number; heightMm: number }>
+): A4PackResult {
+  if (sizes.length === 0) return { placements: [], sheets: 0 }
+
+  const usable = a4UsableSizeMm()
+  const order = sizes
+    .map((size, index) => ({
+      index,
+      widthMm: roundPackMm(size.widthMm),
+      heightMm: roundPackMm(size.heightMm)
+    }))
+    .sort((a, b) => b.heightMm - a.heightMm || b.widthMm - a.widthMm || a.index - b.index)
+
+  const sheets: FreeRect[][] = []
+  const placements: A4PackedLabel[] = []
+
+  function addSheet(): number {
+    sheets.push([{ x: 0, y: 0, w: usable.widthMm, h: usable.heightMm }])
+    return sheets.length - 1
+  }
+
+  addSheet()
+
+  for (const item of order) {
+    const widthMm = Math.min(item.widthMm, usable.widthMm)
+    const heightMm = Math.min(item.heightMm, usable.heightMm)
+    let placed = false
+
+    for (let sheet = 0; sheet < sheets.length; sheet++) {
+      const fit = findBestFit(sheets[sheet], widthMm, heightMm)
+      if (!fit) continue
+      const x = roundPackMm(fit.x)
+      const y = roundPackMm(fit.y)
+      sheets[sheet] = placeOnSheet(sheets[sheet], x, y, widthMm, heightMm)
+      placements.push({
+        index: item.index,
+        sheet,
+        xMm: x,
+        yMm: y,
+        widthMm,
+        heightMm
+      })
+      placed = true
+      break
+    }
+
+    if (!placed) {
+      const sheet = addSheet()
+      const x = 0
+      const y = 0
+      sheets[sheet] = placeOnSheet(sheets[sheet], x, y, widthMm, heightMm)
+      placements.push({
+        index: item.index,
+        sheet,
+        xMm: x,
+        yMm: y,
+        widthMm,
+        heightMm
+      })
+    }
+  }
+
+  placements.sort((a, b) => a.sheet - b.sheet || a.index - b.index)
+  return { placements, sheets: sheets.length }
+}
+
+export function a4SheetsNeededMixed(
+  sizes: Array<{ widthMm: number; heightMm: number }>
+): number {
+  return packA4Labels(sizes).sheets
+}

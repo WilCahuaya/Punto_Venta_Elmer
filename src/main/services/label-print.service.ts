@@ -7,14 +7,14 @@ import { pathToFileURL } from 'url'
 import {
   buildLabelCellCss,
   buildLabelCellHtml,
-  buildSingleLabelDocumentHtml
+  buildSingleLabelDocumentHtml,
+  labelSizeClassName
 } from '@shared/lib/label-html'
 import {
-  A4_GAP_MM,
   A4_MARGIN_MM,
   A4_PAGE_HEIGHT_MM,
   A4_PAGE_WIDTH_MM,
-  computeA4LabelGrid,
+  packA4Labels,
   isCompactLabel,
   labelBarcodeBarsMaxMm,
   labelBarcodeMaxWidthMm,
@@ -38,6 +38,7 @@ export interface LabelPrintContent {
   priceText: string | null
   barcodeCode: string
   barcodeImagePath: string
+  dims?: LabelDimensions
 }
 
 function prepareBarcodeImage(
@@ -415,25 +416,38 @@ export async function printLabels(
   }
 }
 
-function buildA4SheetDocumentHtml(
-  cells: string[],
-  dims: LabelDimensions,
-  grid: ReturnType<typeof computeA4LabelGrid>
-): string {
-  const pages: string[] = []
-  const { perSheet, cols } = grid
+function contentDims(content: LabelPrintContent, fallback: LabelDimensions): LabelDimensions {
+  return content.dims ?? fallback
+}
 
-  for (let i = 0; i < cells.length; i += perSheet) {
-    const chunk = cells.slice(i, i + perSheet)
-    while (chunk.length < perSheet) {
-      chunk.push('<div class="label empty"></div>')
-    }
+function uniqueLabelDims(dimsList: LabelDimensions[]): LabelDimensions[] {
+  const map = new Map<string, LabelDimensions>()
+  for (const dims of dimsList) {
+    map.set(`${dims.widthMm}x${dims.heightMm}`, dims)
+  }
+  return [...map.values()]
+}
+
+function buildA4PackedDocumentHtml(
+  cells: Array<{ html: string; dims: LabelDimensions }>,
+  placements: ReturnType<typeof packA4Labels>['placements'],
+  sheets: number
+): string {
+  const sizeCss = uniqueLabelDims(cells.map((c) => c.dims))
+    .map((dims) => buildLabelCellCss(dims, `.${labelSizeClassName(dims.widthMm, dims.heightMm)}`))
+    .join('\n')
+
+  const pages: string[] = []
+  for (let sheet = 0; sheet < sheets; sheet++) {
+    const onSheet = placements.filter((p) => p.sheet === sheet)
     pages.push(
       [
         '<div class="sheet">',
-        `  <div class="grid" style="grid-template-columns:repeat(${cols}, ${dims.widthMm}mm);">`,
-        ...chunk.map((c) => `    ${c}`),
-        '  </div>',
+        ...onSheet.map((p) => {
+          const left = A4_MARGIN_MM + p.xMm
+          const top = A4_MARGIN_MM + p.yMm
+          return `  <div class="placed" style="left:${left}mm;top:${top}mm;">${cells[p.index].html}</div>`
+        }),
         '</div>'
       ].join('\n')
     )
@@ -450,13 +464,12 @@ function buildA4SheetDocumentHtml(
     '    html, body { margin: 0; padding: 0; background: #fff;',
     '      font-family: Arial, Helvetica, sans-serif; color: #000;',
     '      -webkit-print-color-adjust: exact; print-color-adjust: exact; }',
-    `    .sheet { width: ${A4_PAGE_WIDTH_MM}mm; height: ${A4_PAGE_HEIGHT_MM}mm;`,
-    `      padding: ${A4_MARGIN_MM}mm; page-break-after: always; break-after: page; overflow: hidden; }`,
+    `    .sheet { position: relative; width: ${A4_PAGE_WIDTH_MM}mm; height: ${A4_PAGE_HEIGHT_MM}mm;`,
+    '      page-break-after: always; break-after: page; overflow: hidden; }',
     '    .sheet:last-child { page-break-after: auto; break-after: auto; }',
-    `    .grid { display: grid; gap: ${A4_GAP_MM}mm; justify-content: start; align-content: start; }`,
-    buildLabelCellCss(dims),
+    '    .placed { position: absolute; }',
+    sizeCss,
     '    .label { border: 0.12mm dashed #bbb; }',
-    '    .label.empty { border-color: transparent; }',
     '  </style>',
     '</head>',
     '<body>',
@@ -464,6 +477,36 @@ function buildA4SheetDocumentHtml(
     '</body>',
     '</html>'
   ].join('\n')
+}
+
+function prepareA4PackedHtml(
+  contents: LabelPrintContent[],
+  fallbackDims: LabelDimensions
+): {
+  html: string
+  sheets: number
+  prepared: Array<{
+    content: LabelPrintContent
+    barcode: { path: string; width: number; height: number }
+  }>
+} {
+  const prepared = contents.map((content) => {
+    const dims = contentDims(content, fallbackDims)
+    const barcode = prepareBarcodeImage(content.barcodeImagePath, dims, Boolean(content.priceText))
+    return { content, barcode, dims }
+  })
+  const pack = packA4Labels(
+    prepared.map((p) => ({ widthMm: p.dims.widthMm, heightMm: p.dims.heightMm }))
+  )
+  const cells = prepared.map((p) => ({
+    html: buildLabelBodyHtml(p.content, p.barcode, p.dims),
+    dims: p.dims
+  }))
+  return {
+    html: buildA4PackedDocumentHtml(cells, pack.placements, pack.sheets),
+    sheets: pack.sheets,
+    prepared
+  }
 }
 
 /** Genera el PDF de etiquetas (rollo o A4) sin imprimir. */
@@ -474,29 +517,41 @@ export async function generateLabelsPdf(
 ): Promise<{ pdf: Buffer; sheets: number }> {
   if (!contents.length) throw new Error('No hay etiquetas para previsualizar')
 
-  const prepared = contents.map((content) => {
-    const barcode = prepareBarcodeImage(content.barcodeImagePath, dims, Boolean(content.priceText))
-    return { content, barcode }
-  })
-
   let htmlFile: string
   let page: { widthMm: number; heightMm: number }
   let sheets = 1
+  let prepared: Array<{
+    content: LabelPrintContent
+    barcode: { path: string; width: number; height: number }
+  }>
 
   if (mode === 'a4') {
-    const grid = computeA4LabelGrid(dims.widthMm, dims.heightMm)
-    sheets = Math.ceil(contents.length / grid.perSheet)
-    const cells = prepared.map(({ content, barcode }) =>
-      buildLabelBodyHtml(content, barcode, dims)
-    )
-    htmlFile = writeTempHtml(buildA4SheetDocumentHtml(cells, dims, grid))
+    const packed = prepareA4PackedHtml(contents, dims)
+    prepared = packed.prepared
+    htmlFile = writeTempHtml(packed.html)
+    sheets = packed.sheets
     page = { widthMm: A4_PAGE_WIDTH_MM, heightMm: A4_PAGE_HEIGHT_MM }
   } else {
+    prepared = contents.map((content) => {
+      const itemDims = contentDims(content, dims)
+      const barcode = prepareBarcodeImage(
+        content.barcodeImagePath,
+        itemDims,
+        Boolean(content.priceText)
+      )
+      return { content, barcode, dims: itemDims }
+    })
+    const firstDims = contentDims(contents[0], dims)
+    const sameSize = contents.every((c) => {
+      const itemDims = contentDims(c, dims)
+      return itemDims.widthMm === firstDims.widthMm && itemDims.heightMm === firstDims.heightMm
+    })
+    const rollDims = sameSize ? firstDims : dims
     const bodies = prepared.map(({ content, barcode }) =>
-      buildLabelBodyHtml(content, barcode, dims)
+      buildLabelBodyHtml(content, barcode, contentDims(content, rollDims))
     )
-    htmlFile = writeTempHtml(buildLabelsDocumentHtml(bodies, dims))
-    page = { widthMm: dims.widthMm, heightMm: dims.heightMm }
+    htmlFile = writeTempHtml(buildLabelsDocumentHtml(bodies, rollDims))
+    page = { widthMm: rollDims.widthMm, heightMm: rollDims.heightMm }
     sheets = contents.length
   }
 
@@ -546,19 +601,8 @@ export async function printLabelsOnA4(
     try {
       await printPdfFileToPrinter(pdfPath, device)
     } catch {
-      const grid = computeA4LabelGrid(dims.widthMm, dims.heightMm)
-      const prepared = contents.map((content) => {
-        const barcode = prepareBarcodeImage(
-          content.barcodeImagePath,
-          dims,
-          Boolean(content.priceText)
-        )
-        return { content, barcode }
-      })
-      const cells = prepared.map(({ content, barcode }) =>
-        buildLabelBodyHtml(content, barcode, dims)
-      )
-      const htmlFile = writeTempHtml(buildA4SheetDocumentHtml(cells, dims, grid))
+      const packed = prepareA4PackedHtml(contents, dims)
+      const htmlFile = writeTempHtml(packed.html)
       try {
         await printHtmlSilent(
           htmlFile,
@@ -573,7 +617,7 @@ export async function printLabelsOnA4(
           /* ignorar */
         }
         cleanupBarcodeTemps(
-          prepared.map((p) => p.barcode),
+          packed.prepared.map((p) => p.barcode),
           contents.map((c) => c.barcodeImagePath)
         )
       }

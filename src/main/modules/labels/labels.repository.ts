@@ -29,8 +29,11 @@ export function insertLabelPrintJob(db: Database.Database, job: LabelJobInsert):
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   )
   const insertItem = db.prepare(
-    `INSERT INTO label_print_job_items (job_id, sort_order, name, barcode, price, copies)
-     VALUES (?, ?, ?, ?, ?, ?)`
+    `INSERT INTO label_print_job_items (
+      job_id, sort_order, name, barcode, price, copies,
+      preset_id, width_mm, height_mm
+    )
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
 
   const run = db.transaction(() => {
@@ -52,7 +55,10 @@ export function insertLabelPrintJob(db: Database.Database, job: LabelJobInsert):
         item.name,
         item.barcode,
         item.price != null && item.price > 0 ? toMoneyDb(item.price) : null,
-        Math.max(1, Math.floor(item.copies))
+        Math.max(1, Math.floor(item.copies)),
+        item.presetId ?? null,
+        item.widthMm ?? null,
+        item.heightMm ?? null
       )
     })
     return jobId
@@ -80,6 +86,9 @@ interface ItemRow {
   barcode: string
   price: string | number | null
   copies: number
+  preset_id: string | null
+  width_mm: number | null
+  height_mm: number | null
 }
 
 export function listLabelPrintJobs(db: Database.Database, limit = 200): JobRow[] {
@@ -116,6 +125,35 @@ export function listPreviewNamesForJobs(
   return map
 }
 
+export function listItemSizeSummaryForJobs(
+  db: Database.Database,
+  jobIds: number[]
+): Map<number, { mixed: boolean }> {
+  const map = new Map<number, { mixed: boolean }>()
+  if (jobIds.length === 0) return map
+  const placeholders = jobIds.map(() => '?').join(',')
+  const rows = db
+    .prepare(
+      `SELECT job_id, width_mm, height_mm
+       FROM label_print_job_items
+       WHERE job_id IN (${placeholders})`
+    )
+    .all(...jobIds) as Array<{ job_id: number; width_mm: number | null; height_mm: number | null }>
+
+  const keys = new Map<number, Set<string>>()
+  for (const row of rows) {
+    const set = keys.get(row.job_id) ?? new Set<string>()
+    if (row.width_mm != null && row.height_mm != null) {
+      set.add(`${Math.round(row.width_mm)}x${Math.round(row.height_mm)}`)
+    }
+    keys.set(row.job_id, set)
+  }
+  for (const [jobId, set] of keys) {
+    map.set(jobId, { mixed: set.size > 1 })
+  }
+  return map
+}
+
 export function getLabelPrintJob(
   db: Database.Database,
   id: number
@@ -126,7 +164,7 @@ export function getLabelPrintJob(
   if (!job) return null
   const items = db
     .prepare(
-      `SELECT id, name, barcode, price, copies
+      `SELECT id, name, barcode, price, copies, preset_id, width_mm, height_mm
        FROM label_print_job_items
        WHERE job_id = ?
        ORDER BY sort_order, id`

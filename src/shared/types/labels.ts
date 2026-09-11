@@ -3,6 +3,10 @@ export interface LabelPrintItem {
   barcode: string
   price?: number | null
   copies: number
+  /** Si se omite, se usa a4/size del payload o Configuración. */
+  presetId?: string
+  widthMm?: number
+  heightMm?: number
 }
 
 export type LabelPrintMode = 'roll' | 'a4'
@@ -48,6 +52,9 @@ export interface LabelPrintHistoryItem {
   barcode: string
   price: number | null
   copies: number
+  presetId: string | null
+  widthMm: number | null
+  heightMm: number | null
 }
 
 export interface LabelPrintHistoryJob {
@@ -74,6 +81,7 @@ export interface LabelPrintHistorySummary {
   presetId: string | null
   widthMm: number | null
   heightMm: number | null
+  mixedSizes: boolean
   /** Primeros nombres para vista rápida */
   previewNames: string
 }

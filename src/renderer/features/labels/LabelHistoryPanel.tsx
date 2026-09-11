@@ -10,6 +10,7 @@ import type { PrinterInfo } from '@shared/types/settings'
 import {
   A4_LABEL_PRESETS,
   a4SheetsNeeded,
+  a4SheetsNeededMixed,
   computeA4LabelGrid,
   resolveLabelDimensions
 } from '@shared/lib/thermal-print'
@@ -144,7 +145,7 @@ export function LabelHistoryPanel(): React.JSX.Element {
         barcode: item.barcode,
         price: item.price,
         copies: item.copies,
-        ...jobSize
+        ...resolveStoredSize(item.presetId, item.widthMm, item.heightMm, jobSize)
       }))
     )
     if (res.data.mode === 'a4') {
@@ -186,28 +187,37 @@ export function LabelHistoryPanel(): React.JSX.Element {
     setEditItems((prev) => prev.map((item) => ({ ...item, ...sizeFromPreset(presetId, item) })))
   }
 
-  async function buildPayload(
-    items: LabelPrintItem[],
-    mode: LabelPrintMode,
-    size: LabelSizeChoice
-  ): Promise<LabelPrintPayload> {
+  async function buildPayload(items: EditableItem[], mode: LabelPrintMode): Promise<LabelPrintPayload> {
     const uniqueCodes = [...new Set(items.map((i) => i.barcode))]
     const barcodeImages: Record<string, string> = {}
     for (const code of uniqueCodes) {
       barcodeImages[code] = await barcodeToBase64(code, LABEL_BARCODE_OPTIONS)
     }
 
-    const dims = resolvedDims(size, mode === 'a4' ? 300 : labelDpi)
+    const dpi = mode === 'a4' ? 300 : labelDpi
+    const mapped = items.map((item) => {
+      const dims = resolvedDims(item, dpi)
+      return {
+        name: item.name,
+        barcode: item.barcode,
+        price: item.price,
+        copies: item.copies,
+        presetId: item.presetId,
+        widthMm: dims.widthMm,
+        heightMm: dims.heightMm
+      }
+    })
+    const first = mapped[0]
 
     if (mode === 'a4') {
       return {
         mode: 'a4',
-        items,
+        items: mapped,
         barcodeImages,
         a4: {
-          presetId: size.presetId,
-          widthMm: dims.widthMm,
-          heightMm: dims.heightMm,
+          presetId: first?.presetId ?? 'custom',
+          widthMm: first?.widthMm,
+          heightMm: first?.heightMm,
           printerName: a4Printer
         }
       }
@@ -215,13 +225,11 @@ export function LabelHistoryPanel(): React.JSX.Element {
 
     return {
       mode: 'roll',
-      items,
+      items: mapped,
       barcodeImages,
-      size: {
-        presetId: size.presetId,
-        widthMm: dims.widthMm,
-        heightMm: dims.heightMm
-      }
+      size: first
+        ? { presetId: first.presetId, widthMm: first.widthMm, heightMm: first.heightMm }
+        : undefined
     }
   }
 
@@ -236,35 +244,15 @@ export function LabelHistoryPanel(): React.JSX.Element {
     setError(null)
     setMessage(null)
     try {
-      const dpi = job.mode === 'a4' ? 300 : labelDpi
-      const groups = new Map<string, EditableItem[]>()
-      for (const item of items) {
-        const key = sizeGroupKey(item, dpi)
-        const list = groups.get(key) ?? []
-        list.push(item)
-        groups.set(key, list)
+      const payload = await buildPayload(items, job.mode)
+      const result = await window.api.labels.print(payload)
+      if (!result.ok) {
+        setError(result.error)
+        return
       }
-
-      let printed = 0
-      let sheets = 0
-      for (const group of groups.values()) {
-        const size: LabelSizeChoice = {
-          presetId: group[0].presetId,
-          widthMm: group[0].widthMm,
-          heightMm: group[0].heightMm
-        }
-        const payload = await buildPayload(group, job.mode, size)
-        const result = await window.api.labels.print(payload)
-        if (!result.ok) {
-          setError(result.error)
-          return
-        }
-        printed += result.data.printed
-        sheets += result.data.sheets ?? 0
-      }
-
-      const sheetsTxt = job.mode === 'a4' && sheets > 0 ? ` · ${sheets} hoja(s)` : ''
-      setMessage(`${printed} etiqueta(s) reimpresas${sheetsTxt}`)
+      const sheetsTxt =
+        result.data.sheets != null ? ` · ${result.data.sheets} hoja(s)` : ''
+      setMessage(`${result.data.printed} etiqueta(s) reimpresas${sheetsTxt}`)
       closeJob()
       void load()
     } catch (e) {
@@ -309,6 +297,18 @@ export function LabelHistoryPanel(): React.JSX.Element {
   const mixedSizes = sizeKeys.size > 1
   const firstDims =
     editItems[0] != null ? resolvedDims(editItems[0], reprintDpi) : null
+  const mixedSheetSizes = useMemo(
+    () =>
+      editItems.flatMap((item) => {
+        const dims = resolvedDims(item, reprintDpi)
+        return Array.from({ length: item.copies }, () => ({
+          widthMm: dims.widthMm,
+          heightMm: dims.heightMm
+        }))
+      }),
+    [editItems, reprintDpi]
+  )
+  const mixedA4Sheets = a4SheetsNeededMixed(mixedSheetSizes)
   const a4Grid = useMemo(
     () =>
       firstDims
@@ -316,7 +316,9 @@ export function LabelHistoryPanel(): React.JSX.Element {
         : { cols: 0, rows: 0, perSheet: 1, widthMm: 0, heightMm: 0 },
     [firstDims?.heightMm, firstDims?.widthMm]
   )
-  const a4SheetsPreview = a4SheetsNeeded(totalCopies, a4Grid.perSheet)
+  const a4SheetsPreview = mixedSizes
+    ? mixedA4Sheets
+    : a4SheetsNeeded(totalCopies, a4Grid.perSheet)
   const printerOptions = printers.map((p) => ({
     value: p.name,
     label: p.isDefault ? `${p.displayName} (predeterminada)` : p.displayName
@@ -331,7 +333,7 @@ export function LabelHistoryPanel(): React.JSX.Element {
           <h3 className="font-medium">Historial de impresión</h3>
           <p className="text-sm text-[rgb(var(--text-muted))]">
             El tamaño original se muestra en la tabla. Al reimprimir puede elegir el tamaño de cada
-            producto.
+            producto; en A4 se colocan juntos en la misma hoja.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -385,6 +387,7 @@ export function LabelHistoryPanel(): React.JSX.Element {
               ) : (
                 jobs.map((j) => {
                   const size = resolveStoredSize(j.presetId, j.widthMm, j.heightMm, settingsSize)
+                  const sizeLabel = j.mixedSizes ? 'Varios' : formatSizeLabel(size)
                   return (
                     <tr
                       key={j.id}
@@ -396,7 +399,7 @@ export function LabelHistoryPanel(): React.JSX.Element {
                           {j.mode === 'a4' ? 'A4' : 'Rollo'}
                         </Badge>
                       </td>
-                      <td className="px-4 py-3 font-medium tabular-nums">{formatSizeLabel(size)}</td>
+                      <td className="px-4 py-3 font-medium tabular-nums">{sizeLabel}</td>
                       <td className="px-4 py-3">
                         <p className="font-medium">
                           {j.itemCount} producto{j.itemCount === 1 ? '' : 's'}
@@ -442,7 +445,9 @@ export function LabelHistoryPanel(): React.JSX.Element {
                 Total: <strong className="text-[rgb(var(--text))]">{totalCopies}</strong>{' '}
                 etiqueta(s) · {job.mode === 'a4' ? 'Hoja A4' : 'Rollo térmico'}
                 {mixedSizes
-                  ? ' · tamaños distintos (se agrupan al imprimir)'
+                  ? job.mode === 'a4'
+                    ? ` · tamaños mixtos · ~${mixedA4Sheets} hoja(s)`
+                    : ' · tamaños distintos (rollo: un trabajo por tamaño)'
                   : firstDims
                     ? ` · ${firstDims.widthMm}×${firstDims.heightMm} mm`
                     : ''}
@@ -493,10 +498,16 @@ export function LabelHistoryPanel(): React.JSX.Element {
                 hoja(s).
               </div>
             )}
-            {mixedSizes && (
+            {job.mode === 'a4' && mixedSizes && (
+              <div className="rounded-lg bg-brand/10 px-3 py-2 text-sm text-brand">
+                Las etiquetas de distinto tamaño se colocan en la misma hoja A4 (~{mixedA4Sheets}{' '}
+                hoja(s)). Use papel en blanco o para cortar; no planchas precortadas de un solo
+                formato.
+              </div>
+            )}
+            {job.mode === 'roll' && mixedSizes && (
               <p className="text-xs text-[rgb(var(--text-muted))]">
-                Cada producto puede tener su tamaño. Al reimprimir el lote se agrupan los que
-                coinciden.
+                En rollo cada tamaño se imprime por separado.
               </p>
             )}
 

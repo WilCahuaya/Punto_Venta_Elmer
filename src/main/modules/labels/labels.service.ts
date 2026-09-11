@@ -27,6 +27,7 @@ import {
   insertLabelPrintJob,
   listLabelPrintJobs,
   listPreviewNamesForJobs,
+  listItemSizeSummaryForJobs,
   mapJobItemPrice
 } from './labels.repository'
 
@@ -86,13 +87,31 @@ function resolvePayloadDims(payload: LabelPrintPayload): {
   return { mode, dims: settingsDims }
 }
 
+function resolveItemDims(
+  item: { presetId?: string; widthMm?: number; heightMm?: number },
+  fallback: LabelDimensions,
+  dpi: number
+): LabelDimensions {
+  if (item.presetId || item.widthMm != null || item.heightMm != null) {
+    return resolveLabelDimensions({
+      presetId: item.presetId ?? 'custom',
+      widthMm: item.widthMm ?? fallback.widthMm,
+      heightMm: item.heightMm ?? fallback.heightMm,
+      dpi
+    })
+  }
+  return fallback
+}
+
 function buildContentsFromPayload(
   payload: LabelPrintPayload,
   companyName: string,
-  currencySymbol: string
+  currencySymbol: string,
+  fallbackDims: LabelDimensions
 ): { contents: LabelPrintContent[]; tempImages: string[]; error?: string } {
   const tempImages: string[] = []
   const contents: LabelPrintContent[] = []
+  const dpi = payload.mode === 'a4' ? 300 : fallbackDims.dpi
 
   for (const item of payload.items) {
     const copies = Math.max(1, Math.min(500, Math.floor(item.copies)))
@@ -106,6 +125,7 @@ function buildContentsFromPayload(
 
     const priceText =
       item.price != null && item.price > 0 ? formatMoney(item.price, currencySymbol) : null
+    const itemDims = resolveItemDims(item, fallbackDims, dpi)
 
     for (let c = 0; c < copies; c++) {
       contents.push({
@@ -113,7 +133,8 @@ function buildContentsFromPayload(
         productName: item.name,
         priceText,
         barcodeCode: item.barcode,
-        barcodeImagePath: imagePath
+        barcodeImagePath: imagePath,
+        dims: itemDims
       })
     }
   }
@@ -149,7 +170,7 @@ export async function printLabelsService(
     return { ok: false, error: 'Seleccione una impresora para hoja A4' }
   }
 
-  const built = buildContentsFromPayload(payload, companyName, currencySymbol)
+  const built = buildContentsFromPayload(payload, companyName, currencySymbol, dims)
   if (built.error) {
     cleanupTempImages(built.tempImages)
     return { ok: false, error: built.error }
@@ -164,11 +185,22 @@ export async function printLabelsService(
       printed = result.printed
       sheets = result.sheets
     } else {
-      await printLabels(built.contents, printerLabels, dims, printerTicket)
+      const groups = new Map<string, LabelPrintContent[]>()
+      for (const content of built.contents) {
+        const itemDims = content.dims ?? dims
+        const key = `${itemDims.widthMm}x${itemDims.heightMm}@${itemDims.dpi}`
+        const list = groups.get(key) ?? []
+        list.push(content)
+        groups.set(key, list)
+      }
+      for (const group of groups.values()) {
+        await printLabels(group, printerLabels, group[0].dims ?? dims, printerTicket)
+      }
     }
 
     try {
       const db = getDatabase()
+      const dpi = mode === 'a4' ? 300 : dims.dpi
       insertLabelPrintJob(db, {
         mode,
         labelCount: printed,
@@ -176,17 +208,23 @@ export async function printLabelsService(
         sheets: sheets ?? null,
         a4PresetId:
           mode === 'a4'
-            ? (payload.a4?.presetId ?? null)
-            : (payload.size?.presetId ?? getSetting('label_preset', '50x25')),
+            ? (payload.a4?.presetId ?? payload.items[0]?.presetId ?? null)
+            : (payload.size?.presetId ?? payload.items[0]?.presetId ?? getSetting('label_preset', '50x25')),
         a4WidthMm: dims.widthMm,
         a4HeightMm: dims.heightMm,
         a4PrinterName: mode === 'a4' ? printerForA4 : null,
-        items: payload.items.map((item) => ({
-          name: item.name,
-          barcode: item.barcode,
-          price: item.price ?? null,
-          copies: Math.max(1, Math.min(500, Math.floor(item.copies)))
-        }))
+        items: payload.items.map((item) => {
+          const itemDims = resolveItemDims(item, dims, dpi)
+          return {
+            name: item.name,
+            barcode: item.barcode,
+            price: item.price ?? null,
+            copies: Math.max(1, Math.min(500, Math.floor(item.copies))),
+            presetId: item.presetId ?? (mode === 'a4' ? payload.a4?.presetId : payload.size?.presetId) ?? null,
+            widthMm: itemDims.widthMm,
+            heightMm: itemDims.heightMm
+          }
+        })
       })
     } catch (histErr) {
       console.warn('[labels] No se pudo guardar historial:', histErr)
@@ -206,10 +244,9 @@ export async function printLabelsService(
 export function listLabelPrintHistoryService(): ApiResult<LabelPrintHistorySummary[]> {
   const db = getDatabase()
   const jobs = listLabelPrintJobs(db, 300)
-  const names = listPreviewNamesForJobs(
-    db,
-    jobs.map((j) => j.id)
-  )
+  const ids = jobs.map((j) => j.id)
+  const names = listPreviewNamesForJobs(db, ids)
+  const sizes = listItemSizeSummaryForJobs(db, ids)
   return {
     ok: true,
     data: jobs.map((j) => {
@@ -225,6 +262,7 @@ export function listLabelPrintHistoryService(): ApiResult<LabelPrintHistorySumma
         presetId: j.a4_preset_id,
         widthMm: j.a4_width_mm,
         heightMm: j.a4_height_mm,
+        mixedSizes: sizes.get(j.id)?.mixed ?? false,
         previewNames: preview.join(', ') + extra
       }
     })
@@ -256,7 +294,10 @@ export function getLabelPrintHistoryJobService(
         name: item.name,
         barcode: item.barcode,
         price: mapJobItemPrice(item.price),
-        copies: item.copies
+        copies: item.copies,
+        presetId: item.preset_id,
+        widthMm: item.width_mm,
+        heightMm: item.height_mm
       }))
     }
   }
@@ -286,7 +327,7 @@ export async function previewLabelsPdfService(
   const currencySymbol = getSetting('currency_symbol', 'S/')
   const companyName = getSetting('company_name', '').trim() || 'Punto de Venta'
 
-  const built = buildContentsFromPayload(payload, companyName, currencySymbol)
+  const built = buildContentsFromPayload(payload, companyName, currencySymbol, dims)
   if (built.error) {
     cleanupTempImages(built.tempImages)
     return { ok: false, error: built.error }

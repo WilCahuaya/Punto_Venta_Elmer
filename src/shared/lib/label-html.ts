@@ -17,8 +17,14 @@ function truncate(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text
 }
 
+export function labelSizeClassName(widthMm: number, heightMm: number): string {
+  const w = String(widthMm).replace('.', '_')
+  const h = String(heightMm).replace('.', '_')
+  return `ls-${w}-${h}`
+}
+
 /** CSS de una etiqueta (mismo layout para impresión y vista previa). */
-export function buildLabelCellCss(dims: LabelDimensions): string {
+export function buildLabelCellCss(dims: LabelDimensions, rootSelector = '.label'): string {
   const layout = resolveLabelContentLayout(dims, 'Producto')
   const { widthMm, heightMm } = dims
   const fonts = layout.nameFonts
@@ -27,24 +33,24 @@ export function buildLabelCellCss(dims: LabelDimensions): string {
   const codeGap = compact ? '0.35mm' : '0.55mm'
 
   return [
-    `    .label { width: ${widthMm}mm; height: ${heightMm}mm; display: flex; flex-direction: column;`,
+    `    ${rootSelector} { width: ${widthMm}mm; height: ${heightMm}mm; display: flex; flex-direction: column;`,
     `      justify-content: flex-start; align-items: stretch; gap: ${stackGap};`,
     `      padding: ${layout.padding}; overflow: hidden; box-sizing: border-box; }`,
-    '    .name { flex: 0 0 auto; text-align: center; font-weight: 700; line-height: 1.02; overflow: hidden;',
+    `    ${rootSelector} .name { flex: 0 0 auto; text-align: center; font-weight: 700; line-height: 1.02; overflow: hidden;`,
     `      display: -webkit-box; -webkit-line-clamp: ${layout.nameLines}; -webkit-box-orient: vertical;`,
     '      word-break: break-word; hyphens: auto; }',
-    `    .name.size-lg { font-size: ${fonts.lg}; }`,
-    `    .name.size-md { font-size: ${fonts.md}; }`,
-    `    .name.size-sm { font-size: ${fonts.sm}; }`,
-    `    .price { flex: 0 0 auto; text-align: center; font-size: ${layout.priceFont}; font-weight: 800;`,
+    `    ${rootSelector} .name.size-lg { font-size: ${fonts.lg}; }`,
+    `    ${rootSelector} .name.size-md { font-size: ${fonts.md}; }`,
+    `    ${rootSelector} .name.size-sm { font-size: ${fonts.sm}; }`,
+    `    ${rootSelector} .price { flex: 0 0 auto; text-align: center; font-size: ${layout.priceFont}; font-weight: 800;`,
     '      line-height: 1; margin: 0; white-space: nowrap; }',
-    '    .barcode-wrap { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;',
+    `    ${rootSelector} .barcode-wrap { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;`,
     `      justify-content: flex-start; gap: ${codeGap}; overflow: hidden; }`,
-    '    .barcode-bars { flex: 1 1 auto; min-height: 0; display: flex; align-items: stretch;',
+    `    ${rootSelector} .barcode-bars { flex: 1 1 auto; min-height: 0; display: flex; align-items: stretch;`,
     '      justify-content: center; overflow: hidden; }',
-    '    .barcode-bars img { display: block; width: 100%; height: 100%; object-fit: fill;',
+    `    ${rootSelector} .barcode-bars img { display: block; width: 100%; height: 100%; object-fit: fill;`,
     '      image-rendering: -webkit-optimize-contrast; image-rendering: crisp-edges; }',
-    '    .barcode-code { flex: 0 0 auto; text-align: center; font-family: "Courier New", Courier, monospace;',
+    `    ${rootSelector} .barcode-code { flex: 0 0 auto; text-align: center; font-family: "Courier New", Courier, monospace;`,
     '      font-weight: 700; letter-spacing: 0.05mm; line-height: 1;',
     '      margin: 0; padding: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }'
   ].join('\n')
@@ -72,7 +78,7 @@ export function buildLabelCellHtml(content: LabelHtmlContent, dims: LabelDimensi
     : ''
 
   return [
-    `<div class="label">`,
+    `<div class="label ${labelSizeClassName(dims.widthMm, dims.heightMm)}">`,
     `  <div class="name ${layout.nameClass}">${name}</div>`,
     price ? `  <div class="price">${price}</div>` : '',
     `  <div class="barcode-wrap">`,

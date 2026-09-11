@@ -10,7 +10,7 @@ import type {
   CloseCashInput,
   OpenCashInput
 } from '@shared/types/cash'
-import type { CreateSaleInput, PartialReturnInput } from '@shared/types/sales'
+import type { AddCreditPaymentInput, CreateSaleInput, CreditListFilters, PartialReturnInput } from '@shared/types/sales'
 import type {
   AdjustStockInput,
   CategoryInput,
@@ -87,6 +87,12 @@ const api = {
     partialReturn: (input: PartialReturnInput) =>
       ipcRenderer.invoke(IPC_CHANNELS.SALES_PARTIAL_RETURN, input),
     void: (input: VoidSaleInput) => ipcRenderer.invoke(IPC_CHANNELS.SALES_VOID, input),
+    listCredits: (filters?: CreditListFilters) =>
+      ipcRenderer.invoke(IPC_CHANNELS.SALES_CREDIT_LIST, filters),
+    payCredit: (input: AddCreditPaymentInput) =>
+      ipcRenderer.invoke(IPC_CHANNELS.SALES_CREDIT_PAY, input),
+    listCreditPaymentsBySession: (sessionId: number) =>
+      ipcRenderer.invoke(IPC_CHANNELS.SALES_CREDIT_PAYMENTS_BY_SESSION, sessionId),
     lookupBarcode: (barcode: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.PRODUCTS_LOOKUP, barcode),
     searchProducts: (query: string) => ipcRenderer.invoke(IPC_CHANNELS.PRODUCTS_SEARCH_POS, query)

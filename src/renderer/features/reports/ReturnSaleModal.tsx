@@ -4,7 +4,6 @@ import type { SaleDetail } from '@shared/types/sales'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { Modal } from '../../components/ui/Modal'
-import { MoneyDisplay } from '../../components/ui/MoneyDisplay'
 import { formatDateTime } from '../../lib/datetime'
 
 interface ReturnSaleModalProps {
@@ -118,6 +117,17 @@ export function ReturnSaleModal({
               La venta sigue <strong>COMPLETADA</strong>. Solo se devuelve stock y se ajustan los
               totales en reportes.
             </p>
+            {detail?.isCredit && (
+              <p className="mt-2 text-amber-700 dark:text-amber-300">
+                En un fiado, la devolución baja el saldo. Si ya se cobró de más, el excedente
+                se registra en la caja abierta.
+              </p>
+            )}
+            {detail?.paymentMethod === 'yape' && !detail.isCredit && (
+              <p className="mt-2 text-fuchsia-700 dark:text-fuchsia-300">
+                Esta venta fue por Yape. El reembolso no sale del cajón de efectivo.
+              </p>
+            )}
           </div>
 
           {loading && (

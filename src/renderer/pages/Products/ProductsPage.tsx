@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Category, Product } from '@shared/types/catalog'
 import { normalizeScannedBarcode } from '@shared/lib/product-barcode'
+import { DOZEN_MIN_UNITS, packSalePrice } from '@shared/lib/product-packs'
 import { Badge } from '../../components/ui/Badge'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
@@ -292,6 +293,37 @@ export function ProductsPage(): React.JSX.Element {
                       <MoneyDisplay amount={p.priceWholesale} size="sm" />
                     ) : (
                       <span className="text-[rgb(var(--text-muted))]">—</span>
+                    )}
+                    {(p.priceDozen != null ||
+                      p.pricePlancha != null ||
+                      p.priceCajon != null) && (
+                      <div className="mt-1 space-y-0.5 text-[11px] text-[rgb(var(--text-muted))]">
+                        {p.priceDozen != null && (
+                          <div>
+                            Docena (desde {DOZEN_MIN_UNITS}):{' '}
+                            <MoneyDisplay amount={p.priceDozen} size="sm" className="inline" />
+                            {' c/u'}
+                          </div>
+                        )}
+                        {p.pricePlancha != null && p.planchaQty != null && (
+                          <div>
+                            Plancha ({p.planchaQty}):{' '}
+                            <MoneyDisplay
+                              amount={packSalePrice(p.pricePlancha, p.planchaQty)}
+                              size="sm"
+                            />
+                          </div>
+                        )}
+                        {p.priceCajon != null && p.cajonQty != null && (
+                          <div>
+                            Cajón ({p.cajonQty}):{' '}
+                            <MoneyDisplay
+                              amount={packSalePrice(p.priceCajon, p.cajonQty)}
+                              size="sm"
+                            />
+                          </div>
+                        )}
+                      </div>
                     )}
                   </td>
                   <td className="px-3 py-2">

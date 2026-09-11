@@ -12,6 +12,7 @@ import { LabelsPage } from '../pages/Labels/LabelsPage'
 import { ReportsPage } from '../pages/Reports/ReportsPage'
 import { SalesPage } from '../pages/Sales/SalesPage'
 import { BackupsPage } from '../pages/Backups/BackupsPage'
+import { CreditsPage } from '../pages/Credits/CreditsPage'
 import { useAuthStore } from '../stores/auth.store'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }): React.JSX.Element {
@@ -51,6 +52,7 @@ export function AppRoutes(): React.JSX.Element {
         <Route path="/categories" element={<CategoriesPage />} />
         <Route path="/labels" element={<LabelsPage />} />
         <Route path="/cash" element={<CashPage />} />
+        <Route path="/credits" element={<CreditsPage />} />
         <Route path="/sales" element={<SalesPage />} />
         <Route path="/reports" element={<ReportsPage />} />
         <Route path="/backups" element={<BackupsPage />} />

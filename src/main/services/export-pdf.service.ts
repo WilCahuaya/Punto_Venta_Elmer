@@ -2,6 +2,7 @@ import { writeFileSync } from 'fs'
 import { join, dirname } from 'path'
 import type { ReportSummary } from '@shared/types/reports'
 import { formatMoney } from '@shared/lib/currency'
+import { salePaymentLabel } from '@shared/lib/payment'
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const pdfMake = require('pdfmake') as {
@@ -89,6 +90,13 @@ function buildDocDefinition(
         columns: [
           { text: `Ventas: ${report.completedCount}` },
           { text: `Total neto: ${money(report.netCompletedTotal, currencySymbol)}` },
+          { text: `Efectivo: ${money(report.cashNetTotal, currencySymbol)}` },
+          { text: `Yape: ${money(report.yapeNetTotal, currencySymbol)}` }
+        ],
+        margin: [0, 0, 0, 4]
+      },
+      {
+        columns: [
           { text: `Devoluciones: ${money(report.returnsTotal, currencySymbol)}` },
           { text: `Ganancia: ${money(report.profit, currencySymbol)}` }
         ],
@@ -121,17 +129,18 @@ function buildDocDefinition(
       {
         table: {
           headerRows: 1,
-          widths: [75, 90, 40, 55],
+          widths: [70, 80, 40, 45, 55],
           body: [
-            ['Ticket', 'Fecha', 'Ítems', 'Total'],
+            ['Ticket', 'Fecha', 'Ítems', 'Pago', 'Total'],
             ...(report.sales.length
               ? report.sales.slice(0, 300).map((s) => [
                   s.ticketNumber,
                   s.createdAt.replace('T', ' ').slice(0, 16),
                   String(s.itemCount),
+                  salePaymentLabel(s),
                   money(s.total, currencySymbol)
                 ])
-              : [['Sin datos', '', '', '']])
+              : [['Sin datos', '', '', '', '']])
           ]
         },
         layout: 'lightHorizontalLines'

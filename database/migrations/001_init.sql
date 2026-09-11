@@ -85,6 +85,7 @@ CREATE TABLE IF NOT EXISTS sales (
   total DECIMAL(12, 2) NOT NULL,
   amount_paid DECIMAL(12, 2) NOT NULL,
   change_amount DECIMAL(12, 2) NOT NULL DEFAULT 0,
+  payment_method TEXT NOT NULL DEFAULT 'cash' CHECK (payment_method IN ('cash', 'yape')),
   price_mode TEXT NOT NULL DEFAULT 'retail' CHECK (price_mode IN ('retail', 'wholesale')),
   status TEXT NOT NULL DEFAULT 'completed' CHECK (status IN ('completed', 'voided')),
   voided_at TEXT,

@@ -2,6 +2,7 @@ import { dialog, shell } from 'electron'
 import type { ApiResult } from '@shared/types/api'
 import type { ReportDateRange, ReportSaleRow, ReportSummary } from '@shared/types/reports'
 import { roundMoney } from '@shared/lib/currency'
+import { normalizePaymentMethod } from '@shared/lib/payment'
 import { localDateIso } from '@shared/lib/local-date'
 import { getDatabase } from '../../database/connection'
 import { fromMoneyDb } from '../../utils/money-db'
@@ -12,6 +13,7 @@ import {
   getTopProductsInRange,
   listAllSalesInRange,
   listSalesInRange,
+  sumCreditPaymentsInRange,
   type SaleListRow,
   type TopProductRow
 } from './reports.repository'
@@ -36,6 +38,9 @@ function mapSaleRow(row: SaleListRow): ReportSaleRow {
     total,
     returnedTotal,
     netTotal: roundMoney(row.status === 'voided' ? 0 : Math.max(0, total - returnedTotal)),
+    paymentMethod: normalizePaymentMethod(row.payment_method),
+    isCredit: Number(row.is_credit) === 1,
+    creditTo: row.credit_to,
     status: row.status as ReportSaleRow['status'],
     voidReason: row.void_reason,
     voidedAt: row.voided_at,
@@ -66,6 +71,14 @@ export function getReportSummaryService(range: ReportDateRange): ApiResult<Repor
   const summary = getReportSummary(db, r)
   const completedTotal = fromMoneyDb(summary.completed_total)
   const returnsTotal = fromMoneyDb(summary.returns_total)
+  const cashNetTotal = roundMoney(
+    Math.max(0, fromMoneyDb(summary.cash_total) - fromMoneyDb(summary.cash_returns)) +
+      sumCreditPaymentsInRange(db, r, 'cash')
+  )
+  const yapeNetTotal = roundMoney(
+    Math.max(0, fromMoneyDb(summary.yape_total) - fromMoneyDb(summary.yape_returns)) +
+      sumCreditPaymentsInRange(db, r, 'yape')
+  )
 
   return {
     ok: true,
@@ -76,6 +89,8 @@ export function getReportSummaryService(range: ReportDateRange): ApiResult<Repor
       completedTotal,
       returnsTotal,
       netCompletedTotal: roundMoney(Math.max(0, completedTotal - returnsTotal)),
+      cashNetTotal,
+      yapeNetTotal,
       profit: roundMoney(Number(summary.profit)),
       voidedCount: summary.voided_count,
       voidedTotal: fromMoneyDb(summary.voided_total),

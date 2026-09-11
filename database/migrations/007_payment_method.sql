@@ -1,0 +1,2 @@
+-- Método de pago: efectivo o Yape. Las ventas Yape no entran al cajón.
+-- El SQL se aplica en migrate.ts con addColumnIfMissing para bases ya existentes.

@@ -29,12 +29,19 @@ export function CashExpectedBreakdown({
 
       <ul className="space-y-2 text-sm">
         <BreakdownLine label="Apertura" amount={session.openingAmount} kind="add" />
-        <BreakdownLine label="Ventas cobradas" amount={session.totalSalesGross} kind="add" />
+        <BreakdownLine label="Ventas en efectivo" amount={session.totalSalesGross} kind="add" />
         {session.totalReturns > 0 && (
           <BreakdownLine
             label="Devoluciones (efectivo devuelto al cliente)"
             amount={session.totalReturns}
             kind="subtract"
+          />
+        )}
+        {session.creditCashCollected !== 0 && (
+          <BreakdownLine
+            label="Abonos de fiados (efectivo)"
+            amount={Math.abs(session.creditCashCollected)}
+            kind={session.creditCashCollected < 0 ? 'subtract' : 'add'}
           />
         )}
         {session.totalIncome > 0 && (
@@ -49,9 +56,30 @@ export function CashExpectedBreakdown({
         </li>
       </ul>
 
+      {(session.totalYapeGross > 0 || session.totalYape > 0 || session.creditYapeCollected !== 0) && (
+        <div className="mt-4 rounded-lg border border-fuchsia-500/25 bg-fuchsia-500/5 px-3 py-2 text-sm">
+          <div className="flex items-center justify-between gap-3">
+            <span>Ventas Yape (no entran al cajón)</span>
+            <MoneyDisplay amount={session.totalYape} size="sm" />
+          </div>
+          {session.creditYapeCollected !== 0 && (
+            <div className="mt-1 flex items-center justify-between gap-3 text-xs">
+              <span>Abonos fiado por Yape</span>
+              <MoneyDisplay amount={session.creditYapeCollected} size="sm" />
+            </div>
+          )}
+          {session.totalYapeReturns > 0 && (
+            <p className="mt-1 text-xs text-[rgb(var(--text-muted))]">
+              Devoluciones Yape:{' '}
+              <MoneyDisplay amount={session.totalYapeReturns} size="sm" className="inline" />
+            </p>
+          )}
+        </div>
+      )}
+
       {session.totalReturns > 0 && (
         <p className="mt-3 text-xs text-amber-700 dark:text-amber-400">
-          Las devoluciones restan del efectivo porque el dinero sale de la caja al cliente.
+          Las devoluciones en efectivo restan del cajón porque el dinero sale de la caja al cliente.
         </p>
       )}
     </div>

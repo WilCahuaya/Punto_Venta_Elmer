@@ -11,6 +11,7 @@ export interface SaleItemWithReturnsRow {
   unit_price: string
   line_total: string
   cost_price: string
+  stock_quantity: number
 }
 
 export function getSaleItemsWithReturns(
@@ -21,7 +22,8 @@ export function getSaleItemsWithReturns(
     .prepare(
       `SELECT id, sale_id, product_id, product_name, barcode, quantity,
               COALESCE(returned_quantity, 0) AS returned_quantity,
-              unit_price, line_total, cost_price
+              unit_price, line_total, cost_price,
+              COALESCE(stock_quantity, quantity) AS stock_quantity
        FROM sale_items WHERE sale_id = ?`
     )
     .all(saleId) as SaleItemWithReturnsRow[]

@@ -59,9 +59,10 @@ export function SessionDetailModal({
 
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <Stat label="Apertura" amount={summary.openingAmount} />
-              <Stat label="Ventas cobradas" amount={summary.totalSalesGross} />
-              <Stat label="Devoluciones" amount={summary.totalReturns} />
-              <Stat label="Ventas netas" amount={summary.totalSales} />
+              <Stat label="Ventas efectivo" amount={summary.totalSalesGross} />
+              <Stat label="Ventas Yape" amount={summary.totalYapeGross} />
+              <Stat label="Devoluciones efectivo" amount={summary.totalReturns} />
+              <Stat label="Efectivo neto" amount={summary.totalSales} />
               <Stat label="Ingresos manuales" amount={summary.totalIncome} />
               <Stat label="Egresos manuales" amount={summary.totalExpense} />
               <Stat label="Ganancia" amount={summary.salesProfit} />

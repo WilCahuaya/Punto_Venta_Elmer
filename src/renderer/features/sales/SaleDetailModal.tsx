@@ -5,6 +5,7 @@ import { Button } from '../../components/ui/Button'
 import { Modal } from '../../components/ui/Modal'
 import { MoneyDisplay } from '../../components/ui/MoneyDisplay'
 import { formatDateTime } from '../../lib/datetime'
+import { paymentMethodLabel } from '@shared/lib/payment'
 
 interface SaleDetailModalProps {
   open: boolean
@@ -90,6 +91,13 @@ export function SaleDetailModal({
             <Badge variant={detail.status === 'voided' ? 'warning' : 'success'}>
               {statusLabel(detail.status)}
             </Badge>
+            <Badge
+              variant={
+                detail.isCredit ? 'warning' : detail.paymentMethod === 'yape' ? 'default' : 'muted'
+              }
+            >
+              {detail.isCredit ? 'Fiado' : paymentMethodLabel(detail.paymentMethod)}
+            </Badge>
             <span className="text-sm text-[rgb(var(--text-muted))]">
               {formatDateTime(detail.createdAt)}
             </span>
@@ -172,14 +180,38 @@ export function SaleDetailModal({
                 <MoneyDisplay amount={detail.netTotal} size="sm" />
               </div>
             )}
-            <div className="flex justify-between sm:block">
-              <span className="text-[rgb(var(--text-muted))]">Recibido</span>
-              <MoneyDisplay amount={detail.amountPaid} size="sm" />
-            </div>
-            <div className="flex justify-between sm:block">
-              <span className="text-[rgb(var(--text-muted))]">Vuelto</span>
-              <MoneyDisplay amount={detail.changeAmount} size="sm" />
-            </div>
+            {detail.isCredit ? (
+              <>
+                <div className="flex justify-between sm:block sm:col-span-2">
+                  <span className="text-[rgb(var(--text-muted))]">A quién se fió</span>
+                  <span className="font-medium">{detail.creditTo || '—'}</span>
+                </div>
+                <div className="flex justify-between sm:block">
+                  <span className="text-[rgb(var(--text-muted))]">Cobrado</span>
+                  <MoneyDisplay amount={detail.paidTotal} size="sm" />
+                </div>
+                <div className="flex justify-between sm:block">
+                  <span className="text-[rgb(var(--text-muted))]">Saldo</span>
+                  <MoneyDisplay amount={detail.remaining} size="sm" />
+                </div>
+              </>
+            ) : detail.paymentMethod === 'cash' ? (
+              <>
+                <div className="flex justify-between sm:block">
+                  <span className="text-[rgb(var(--text-muted))]">Recibido</span>
+                  <MoneyDisplay amount={detail.amountPaid} size="sm" />
+                </div>
+                <div className="flex justify-between sm:block">
+                  <span className="text-[rgb(var(--text-muted))]">Vuelto</span>
+                  <MoneyDisplay amount={detail.changeAmount} size="sm" />
+                </div>
+              </>
+            ) : (
+              <div className="flex justify-between sm:block sm:col-span-2">
+                <span className="text-[rgb(var(--text-muted))]">Pago</span>
+                <span className="font-medium">{paymentMethodLabel(detail.paymentMethod)}</span>
+              </div>
+            )}
           </div>
 
           {printMsg && <p className="text-sm text-brand">{printMsg}</p>}

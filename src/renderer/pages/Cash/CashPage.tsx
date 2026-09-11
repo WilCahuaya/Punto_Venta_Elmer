@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import type { CashMovement, CashSessionSummary } from '@shared/types/cash'
-import type { SaleListEntry } from '@shared/types/sales'
+import type { CreditPayment, SaleListEntry } from '@shared/types/sales'
 import { Badge } from '../../components/ui/Badge'
 import { Button } from '../../components/ui/Button'
 import { MoneyDisplay } from '../../components/ui/MoneyDisplay'
@@ -27,6 +27,7 @@ export function CashPage(): React.JSX.Element {
 
   const [movements, setMovements] = useState<CashMovement[]>([])
   const [sessionSales, setSessionSales] = useState<SaleListEntry[]>([])
+  const [creditPayments, setCreditPayments] = useState<CreditPayment[]>([])
   const [history, setHistory] = useState<CashSessionSummary[]>([])
   const [openModal, setOpenModal] = useState(false)
   const [closeModal, setCloseModal] = useState(false)
@@ -46,14 +47,17 @@ export function CashPage(): React.JSX.Element {
   }, [])
 
   const loadTurnLedger = useCallback(async (sessionId: number) => {
-    const [mRes, sRes] = await Promise.all([
+    const [mRes, sRes, cRes] = await Promise.all([
       window.api.cash.listMovements(sessionId),
-      window.api.sales.listBySession(sessionId)
+      window.api.sales.listBySession(sessionId),
+      window.api.sales.listCreditPaymentsBySession(sessionId)
     ])
     if (mRes.ok) setMovements(mRes.data)
     else setMovements([])
     if (sRes.ok) setSessionSales(sRes.data)
     else setSessionSales([])
+    if (cRes.ok) setCreditPayments(cRes.data)
+    else setCreditPayments([])
   }, [])
 
   const load = useCallback(async () => {
@@ -76,6 +80,7 @@ export function CashPage(): React.JSX.Element {
     } else {
       setMovements([])
       setSessionSales([])
+      setCreditPayments([])
     }
   }, [isOpen, current?.id, loadTurnLedger])
 
@@ -118,13 +123,13 @@ export function CashPage(): React.JSX.Element {
               <div className="mb-6 grid gap-4 lg:grid-cols-2">
                 <CashExpectedBreakdown session={current} />
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <SummaryCard title="Ventas cobradas" amount={current.totalSalesGross} />
+                  <SummaryCard title="Ventas efectivo" amount={current.totalSalesGross} />
+                  <SummaryCard title="Ventas Yape" amount={current.totalYapeGross} />
                   <SummaryCard
-                    title="Devoluciones"
+                    title="Devoluciones efectivo"
                     amount={current.totalReturns}
                     negative={current.totalReturns > 0}
                   />
-                  <SummaryCard title="Ventas netas" amount={current.totalSales} />
                   <SummaryCard title="Ganancia" amount={current.salesProfit} positive />
                 </div>
               </div>
@@ -147,7 +152,11 @@ export function CashPage(): React.JSX.Element {
                 <p className="mb-3 text-xs text-[rgb(var(--text-muted))]">
                   Ventas, ingresos y egresos en orden cronológico
                 </p>
-                <TurnLedgerTable movements={movements} sales={sessionSales} />
+                <TurnLedgerTable
+                  movements={movements}
+                  sales={sessionSales}
+                  creditPayments={creditPayments}
+                />
               </section>
 
               <CloseCashModal
@@ -205,7 +214,8 @@ export function CashPage(): React.JSX.Element {
                 <tr>
                   <th className="px-4 py-3 font-medium">Cierre</th>
                   <th className="px-4 py-3 font-medium">Apertura</th>
-                  <th className="px-4 py-3 font-medium">Ventas netas</th>
+                  <th className="px-4 py-3 font-medium">Efectivo neto</th>
+                  <th className="px-4 py-3 font-medium">Yape</th>
                   <th className="px-4 py-3 font-medium">Esperado</th>
                   <th className="px-4 py-3 font-medium">Contado</th>
                   <th className="px-4 py-3 font-medium">Diferencia</th>
@@ -215,7 +225,7 @@ export function CashPage(): React.JSX.Element {
               <tbody>
                 {history.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-6 text-center text-[rgb(var(--text-muted))]">
+                    <td colSpan={8} className="px-4 py-6 text-center text-[rgb(var(--text-muted))]">
                       Sin historial
                     </td>
                   </tr>
@@ -233,6 +243,9 @@ export function CashPage(): React.JSX.Element {
                       </td>
                       <td className="px-4 py-3">
                         <MoneyDisplay amount={s.totalSales} size="sm" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <MoneyDisplay amount={s.totalYape} size="sm" />
                       </td>
                       <td className="px-4 py-3">
                         <MoneyDisplay amount={s.expectedAmount ?? 0} size="sm" />
@@ -330,7 +343,11 @@ interface TurnLedgerRow {
   amount: number
 }
 
-function buildTurnLedger(movements: CashMovement[], sales: SaleListEntry[]): TurnLedgerRow[] {
+function buildTurnLedger(
+  movements: CashMovement[],
+  sales: SaleListEntry[],
+  creditPayments: CreditPayment[]
+): TurnLedgerRow[] {
   const rows: TurnLedgerRow[] = []
 
   for (const m of movements) {
@@ -345,13 +362,34 @@ function buildTurnLedger(movements: CashMovement[], sales: SaleListEntry[]): Tur
   }
 
   for (const s of sales) {
+    const isYape = s.paymentMethod === 'yape'
     rows.push({
       key: `s-${s.id}`,
       createdAt: s.createdAt,
-      typeLabel: s.status === 'voided' ? 'Venta anulada' : 'Venta',
-      badgeVariant: s.status === 'voided' ? 'muted' : 'default',
-      concept: s.ticketNumber,
+      typeLabel:
+        s.status === 'voided'
+          ? 'Venta anulada'
+          : s.isCredit
+            ? 'Fiado'
+            : isYape
+              ? 'Yape'
+              : 'Efectivo',
+      badgeVariant:
+        s.status === 'voided' ? 'muted' : s.isCredit ? 'warning' : isYape ? 'default' : 'success',
+      concept: s.isCredit && s.creditTo ? `${s.ticketNumber} · ${s.creditTo}` : s.ticketNumber,
       amount: s.status === 'voided' ? s.total : s.netTotal
+    })
+  }
+
+  for (const p of creditPayments) {
+    const who = p.creditTo ? ` · ${p.creditTo}` : ''
+    rows.push({
+      key: `cp-${p.id}`,
+      createdAt: p.createdAt,
+      typeLabel: p.kind === 'refund' ? 'Devol. fiado' : 'Abono fiado',
+      badgeVariant: p.kind === 'refund' ? 'warning' : p.paymentMethod === 'yape' ? 'default' : 'success',
+      concept: `${p.ticketNumber ?? 'Ticket'}${who} · ${p.paymentMethod === 'yape' ? 'Yape' : 'Efectivo'}`,
+      amount: p.kind === 'refund' ? -p.amount : p.amount
     })
   }
 
@@ -362,12 +400,14 @@ function buildTurnLedger(movements: CashMovement[], sales: SaleListEntry[]): Tur
 
 function TurnLedgerTable({
   movements,
-  sales
+  sales,
+  creditPayments
 }: {
   movements: CashMovement[]
   sales: SaleListEntry[]
+  creditPayments: CreditPayment[]
 }): React.JSX.Element {
-  const rows = buildTurnLedger(movements, sales)
+  const rows = buildTurnLedger(movements, sales, creditPayments)
 
   return (
     <div className="overflow-hidden rounded-xl border border-surface-border">

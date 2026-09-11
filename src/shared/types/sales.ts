@@ -1,5 +1,7 @@
+import type { PaymentMethod } from '../lib/payment'
 import type { Product } from './catalog'
 
+export type { PaymentMethod }
 export type PriceMode = 'retail' | 'wholesale' | 'custom'
 
 export interface PosProduct {
@@ -13,6 +15,11 @@ export interface PosProduct {
   costPrice: number
   priceRetail: number
   priceWholesale: number | null
+  priceDozen: number | null
+  planchaQty: number | null
+  pricePlancha: number | null
+  cajonQty: number | null
+  priceCajon: number | null
   imagePath: string | null
 }
 
@@ -27,6 +34,8 @@ export interface CartLine {
   maxStock: number
   lineTotal: number
   priceLabel: string
+  /** Unidades de inventario por cada 1 de quantity (1 = venta por unidad). */
+  unitsPerPack: number
   /** Venta de servicio libre (sin stock). */
   isService?: boolean
 }
@@ -35,6 +44,10 @@ export interface SaleItemInput {
   productId: number
   quantity: number
   unitPrice: number
+  /** Unidades reales a descontar del stock. Por defecto igual a quantity. */
+  stockQuantity?: number
+  /** Etiqueta del empaque o tarifa (Docena, Plancha, Mayor…). */
+  priceLabel?: string
   /** Nombre mostrado en ticket (servicio libre). */
   displayName?: string
   /** No valida ni descuenta stock. */
@@ -46,6 +59,11 @@ export interface CreateSaleInput {
   priceMode?: PriceMode
   amountPaid: number
   discount?: number
+  paymentMethod?: PaymentMethod
+  /** Venta fiada: se lleva el producto y paga después (o un adelanto). */
+  isCredit?: boolean
+  /** Texto libre: a quién se fió y lo que se desee anotar. */
+  creditTo?: string | null
 }
 
 export interface SaleItem {
@@ -69,6 +87,11 @@ export interface Sale {
   total: number
   amountPaid: number
   changeAmount: number
+  paymentMethod: PaymentMethod
+  isCredit: boolean
+  creditTo: string | null
+  paidTotal: number
+  remaining: number
   priceMode: PriceMode
   status: SaleStatus
   items: SaleItem[]
@@ -113,11 +136,64 @@ export interface SaleListEntry {
   returnedTotal: number
   amountPaid: number
   changeAmount: number
+  paymentMethod: PaymentMethod
+  isCredit: boolean
+  creditTo: string | null
+  paidTotal: number
+  remaining: number
   status: SaleStatus
   voidReason: string | null
   voidedAt: string | null
   voidedByName: string | null
   itemCount: number
+}
+
+export type CreditPaymentKind = 'payment' | 'refund'
+
+export interface CreditPayment {
+  id: number
+  saleId: number
+  sessionId: number
+  amount: number
+  paymentMethod: PaymentMethod
+  kind: CreditPaymentKind
+  createdAt: string
+  createdByName: string | null
+  ticketNumber?: string
+  creditTo?: string | null
+}
+
+export interface CreditSaleItem {
+  productName: string
+  quantity: number
+  returnedQuantity: number
+  unitPrice: number
+  lineTotal: number
+}
+
+export interface CreditSaleEntry {
+  id: number
+  ticketNumber: string
+  creditTo: string
+  createdAt: string
+  total: number
+  returnedTotal: number
+  netTotal: number
+  paidTotal: number
+  remaining: number
+  items: CreditSaleItem[]
+  payments: CreditPayment[]
+}
+
+export interface CreditListFilters {
+  search?: string
+  includeSettled?: boolean
+}
+
+export interface AddCreditPaymentInput {
+  saleId: number
+  amount: number
+  paymentMethod?: PaymentMethod
 }
 
 export function productToPosProduct(product: Product): PosProduct {
@@ -132,6 +208,11 @@ export function productToPosProduct(product: Product): PosProduct {
     costPrice: product.costPrice,
     priceRetail: product.priceRetail,
     priceWholesale: product.priceWholesale,
+    priceDozen: product.priceDozen,
+    planchaQty: product.planchaQty,
+    pricePlancha: product.pricePlancha,
+    cajonQty: product.cajonQty,
+    priceCajon: product.priceCajon,
     imagePath: product.imagePath
   }
 }

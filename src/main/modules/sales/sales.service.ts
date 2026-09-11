@@ -1,6 +1,10 @@
 import type { ApiResult } from '@shared/types/api'
 import type {
+  AddCreditPaymentInput,
   CreateSaleInput,
+  CreditListFilters,
+  CreditPayment,
+  CreditSaleEntry,
   PartialReturnInput,
   PriceMode,
   Sale,
@@ -10,6 +14,8 @@ import type {
   SaleListEntry
 } from '@shared/types/sales'
 import { roundMoney } from '@shared/lib/currency'
+import { DOZEN_MIN_UNITS, isDozenPriceLabel, stockUnitsForCommercialQty } from '@shared/lib/product-packs'
+import { normalizePaymentMethod } from '@shared/lib/payment'
 import { getDatabase } from '../../database/connection'
 import { getOpenSession } from '../cash/cash.repository'
 import { getCurrentUserId } from '../auth/auth.service'
@@ -38,6 +44,19 @@ import {
   insertSaleReturnItem,
   type SaleItemWithReturnsRow
 } from './sales-returns.repository'
+import {
+  getCreditPaidByMethod,
+  getCreditPaidTotal,
+  insertCreditPayment,
+  listCreditPayments,
+  listCreditPaymentsForSession,
+  listCreditSaleItems,
+  listCreditSales,
+  getCreditSaleRow,
+  updateSaleAmountPaid,
+  type CreditPaymentRow,
+  type CreditSaleListRow
+} from './sales-credit.repository'
 
 function mapSaleItem(row: SaleItemRow): SaleItem {
   return {
@@ -69,6 +88,11 @@ function mapSaleItemDetail(row: SaleItemWithReturnsRow): SaleItemDetail {
 
 function mapSale(row: SaleRowFull, items: SaleItemRow[], returnedTotal = 0): Sale {
   const total = fromMoneyDb(row.total)
+  const netTotal = roundMoney(Math.max(0, total - returnedTotal))
+  const isCredit = Number(row.is_credit) === 1
+  const paidTotal = isCredit
+    ? roundMoney(fromMoneyDb(row.amount_paid))
+    : fromMoneyDb(row.amount_paid)
   return {
     id: row.id,
     ticketNumber: row.ticket_number,
@@ -78,6 +102,11 @@ function mapSale(row: SaleRowFull, items: SaleItemRow[], returnedTotal = 0): Sal
     total,
     amountPaid: fromMoneyDb(row.amount_paid),
     changeAmount: fromMoneyDb(row.change_amount),
+    paymentMethod: normalizePaymentMethod(row.payment_method),
+    isCredit,
+    creditTo: row.credit_to,
+    paidTotal,
+    remaining: isCredit ? roundMoney(Math.max(0, netTotal - paidTotal)) : 0,
     priceMode: row.price_mode as PriceMode,
     status: row.status as Sale['status'],
     items: items.map(mapSaleItem),
@@ -86,13 +115,16 @@ function mapSale(row: SaleRowFull, items: SaleItemRow[], returnedTotal = 0): Sal
     voidReason: row.void_reason,
     voidedByName: row.voided_by_name,
     returnedTotal: roundMoney(returnedTotal),
-    netTotal: roundMoney(Math.max(0, total - returnedTotal))
+    netTotal
   }
 }
 
 function mapSaleListRow(row: SaleListRow): SaleListEntry {
   const total = fromMoneyDb(row.total)
   const returnedTotal = fromMoneyDb(row.returned_total)
+  const netTotal = roundMoney(row.status === 'voided' ? 0 : Math.max(0, total - returnedTotal))
+  const isCredit = Number(row.is_credit) === 1
+  const paidTotal = fromMoneyDb(row.amount_paid)
   return {
     id: row.id,
     ticketNumber: row.ticket_number,
@@ -102,9 +134,14 @@ function mapSaleListRow(row: SaleListRow): SaleListEntry {
     discount: fromMoneyDb(row.discount),
     total,
     returnedTotal,
-    netTotal: roundMoney(row.status === 'voided' ? 0 : Math.max(0, total - returnedTotal)),
-    amountPaid: fromMoneyDb(row.amount_paid),
+    netTotal,
+    amountPaid: paidTotal,
     changeAmount: fromMoneyDb(row.change_amount),
+    paymentMethod: normalizePaymentMethod(row.payment_method),
+    isCredit,
+    creditTo: row.credit_to,
+    paidTotal,
+    remaining: isCredit && row.status === 'completed' ? roundMoney(Math.max(0, netTotal - paidTotal)) : 0,
     status: row.status as SaleListEntry['status'],
     voidReason: row.void_reason,
     voidedAt: row.voided_at,
@@ -143,11 +180,18 @@ export function createSaleService(input: CreateSaleInput): ApiResult<Sale> {
     unitPrice: number
     lineTotal: number
     costPrice: number
+    stockQuantity: number
     skipStock: boolean
   }[] = []
 
   for (const item of input.items) {
     if (item.quantity <= 0) return { ok: false, error: 'Cantidad inválida' }
+    if (isDozenPriceLabel(item.priceLabel ?? '') && item.quantity < DOZEN_MIN_UNITS) {
+      return {
+        ok: false,
+        error: `El precio de docena aplica desde ${DOZEN_MIN_UNITS} unidades`
+      }
+    }
     const product = getProductById(db, item.productId)
     if (!product) {
       return { ok: false, error: `Producto #${item.productId} no disponible` }
@@ -158,7 +202,13 @@ export function createSaleService(input: CreateSaleInput): ApiResult<Sale> {
     if (!isService && product.is_active !== 1) {
       return { ok: false, error: `Producto #${item.productId} no disponible` }
     }
-    if (!isService && product.stock < item.quantity) {
+
+    const stockQuantity = item.stockQuantity != null && item.stockQuantity > 0
+      ? item.stockQuantity
+      : item.quantity
+    if (stockQuantity <= 0) return { ok: false, error: 'Cantidad inválida' }
+
+    if (!isService && product.stock < stockQuantity) {
       return { ok: false, error: `Stock insuficiente: ${product.name}` }
     }
 
@@ -181,25 +231,55 @@ export function createSaleService(input: CreateSaleInput): ApiResult<Sale> {
     subtotal += lineTotal
     lineData.push({
       productId: product.id,
-      productName: isService ? displayName! : product.name,
+      productName: isService
+        ? displayName!
+        : item.priceLabel && item.priceLabel !== 'Menor'
+          ? `${product.name} · ${item.priceLabel}`
+          : product.name,
       barcode: isService ? null : product.barcode,
       quantity: item.quantity,
       unitPrice,
       lineTotal,
       costPrice: isService ? 0 : fromMoneyDb(product.cost_price),
+      stockQuantity,
       skipStock: isService
     })
   }
 
   subtotal = roundMoney(subtotal)
   const total = roundMoney(Math.max(0, subtotal - discount))
-  const amountPaid = roundMoney(input.amountPaid)
+  const paymentMethod = normalizePaymentMethod(input.paymentMethod)
+  const isCredit = input.isCredit === true
+  const creditTo = input.creditTo?.trim() || ''
 
-  if (amountPaid < total) {
-    return { ok: false, error: 'El monto recibido es menor al total' }
+  let amountPaid: number
+  let changeAmount: number
+
+  if (isCredit) {
+    if (!creditTo) {
+      return { ok: false, error: 'Indique a quién se fía (nombre y lo que desee anotar)' }
+    }
+    if (creditTo.length > 500) {
+      return { ok: false, error: 'El texto de a quién se fió es demasiado largo' }
+    }
+    amountPaid = roundMoney(input.amountPaid)
+    if (amountPaid < 0) {
+      return { ok: false, error: 'El adelanto no puede ser negativo' }
+    }
+    if (amountPaid >= total) {
+      return {
+        ok: false,
+        error: 'Si cubre el total, cobre con Efectivo o Yape. El fiado es solo para lo que queda debiendo.'
+      }
+    }
+    changeAmount = 0
+  } else {
+    amountPaid = paymentMethod === 'yape' ? total : roundMoney(input.amountPaid)
+    if (amountPaid < total) {
+      return { ok: false, error: 'El monto recibido es menor al total' }
+    }
+    changeAmount = paymentMethod === 'yape' ? 0 : roundMoney(amountPaid - total)
   }
-
-  const changeAmount = roundMoney(amountPaid - total)
 
   try {
     const sale = db.transaction(() => {
@@ -212,13 +292,16 @@ export function createSaleService(input: CreateSaleInput): ApiResult<Sale> {
         total: toMoneyDb(total),
         amountPaid: toMoneyDb(amountPaid),
         changeAmount: toMoneyDb(changeAmount),
+        paymentMethod,
+        isCredit,
+        creditTo: isCredit ? creditTo : null,
         priceMode: input.priceMode ?? 'retail',
         createdBy: userId
       })
 
       for (const line of lineData) {
         if (!line.skipStock) {
-          const ok = decrementStock(db, line.productId, line.quantity)
+          const ok = decrementStock(db, line.productId, line.stockQuantity)
           if (!ok) throw new Error(`Stock insuficiente: ${line.productName}`)
         }
         insertSaleItem(db, {
@@ -229,7 +312,19 @@ export function createSaleService(input: CreateSaleInput): ApiResult<Sale> {
           quantity: line.quantity,
           unitPrice: toMoneyDb(line.unitPrice),
           lineTotal: toMoneyDb(line.lineTotal),
-          costPrice: toMoneyDb(line.costPrice)
+          costPrice: toMoneyDb(line.costPrice),
+          stockQuantity: line.stockQuantity
+        })
+      }
+
+      if (isCredit && amountPaid > 0) {
+        insertCreditPayment(db, {
+          saleId,
+          sessionId: cashSession.id,
+          amount: toMoneyDb(amountPaid),
+          paymentMethod,
+          kind: 'payment',
+          createdBy: userId
         })
       }
 
@@ -279,6 +374,12 @@ export function voidSaleService(saleId: number, reason: string): ApiResult<Sale>
   if (sale.status !== 'completed') {
     return { ok: false, error: 'Solo se pueden anular ventas completadas' }
   }
+  if (Number(sale.is_credit) === 1 && getCreditPaidTotal(db, saleId) > 0.004) {
+    return {
+      ok: false,
+      error: 'Este fiado tiene cobros. No se puede anular. Devuelva productos o cobre el saldo.'
+    }
+  }
 
   try {
     db.transaction(() => {
@@ -287,7 +388,12 @@ export function voidSaleService(saleId: number, reason: string): ApiResult<Sale>
         if (isSystemServiceProductId(db, item.product_id)) continue
         const remaining = item.quantity - (Number(item.returned_quantity) || 0)
         if (remaining > 0) {
-          restoreStock(db, item.product_id, remaining)
+          const stockTotal = Number(item.stock_quantity) || item.quantity
+          restoreStock(
+            db,
+            item.product_id,
+            stockUnitsForCommercialQty(remaining, item.quantity, stockTotal)
+          )
         }
       }
       voidSaleRecord(db, saleId, reason.trim(), userId)
@@ -377,7 +483,50 @@ export function partialReturnService(input: PartialReturnInput): ApiResult<SaleD
         })
         addReturnedQuantity(db, line.saleItemId, line.quantity)
         if (!isSystemServiceProductId(db, line.productId)) {
-          restoreStock(db, line.productId, line.quantity)
+          const item = itemMap.get(line.saleItemId)!
+          const stockTotal = Number(item.stock_quantity) || item.quantity
+          restoreStock(
+            db,
+            line.productId,
+            stockUnitsForCommercialQty(line.quantity, item.quantity, stockTotal)
+          )
+        }
+      }
+
+      if (Number(sale.is_credit) === 1) {
+        const paid = roundMoney(getCreditPaidTotal(db, input.saleId))
+        const newReturned = fromMoneyDb(getReturnedTotalForSale(db, input.saleId))
+        const newNet = roundMoney(Math.max(0, fromMoneyDb(sale.total) - newReturned))
+        const excess = roundMoney(paid - newNet)
+        if (excess > 0.004) {
+          const open = getOpenSession(db)
+          if (!open) {
+            throw new Error('Abra la caja: hay que devolver el adelanto de este fiado.')
+          }
+          const cashPaid = roundMoney(getCreditPaidByMethod(db, input.saleId, 'cash'))
+          const cashRefund = roundMoney(Math.min(excess, Math.max(0, cashPaid)))
+          const yapeRefund = roundMoney(Math.max(0, excess - cashRefund))
+          if (cashRefund > 0) {
+            insertCreditPayment(db, {
+              saleId: input.saleId,
+              sessionId: open.id,
+              amount: toMoneyDb(cashRefund),
+              paymentMethod: 'cash',
+              kind: 'refund',
+              createdBy: userId
+            })
+          }
+          if (yapeRefund > 0) {
+            insertCreditPayment(db, {
+              saleId: input.saleId,
+              sessionId: open.id,
+              amount: toMoneyDb(yapeRefund),
+              paymentMethod: 'yape',
+              kind: 'refund',
+              createdBy: userId
+            })
+          }
+          updateSaleAmountPaid(db, input.saleId, toMoneyDb(roundMoney(getCreditPaidTotal(db, input.saleId))))
         }
       }
     })()
@@ -385,5 +534,122 @@ export function partialReturnService(input: PartialReturnInput): ApiResult<SaleD
     return getSaleDetailService(input.saleId)
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'Error al registrar devolución' }
+  }
+}
+
+function mapCreditPayment(row: CreditPaymentRow): CreditPayment {
+  return {
+    id: row.id,
+    saleId: row.sale_id,
+    sessionId: row.session_id,
+    amount: fromMoneyDb(row.amount),
+    paymentMethod: normalizePaymentMethod(row.payment_method),
+    kind: row.kind === 'refund' ? 'refund' : 'payment',
+    createdAt: row.created_at,
+    createdByName: row.created_by_name,
+    ticketNumber: row.ticket_number ?? undefined,
+    creditTo: row.credit_to ?? undefined
+  }
+}
+
+function mapCreditSaleEntry(db: ReturnType<typeof getDatabase>, row: CreditSaleListRow): CreditSaleEntry {
+  const total = fromMoneyDb(row.total)
+  const returnedTotal = fromMoneyDb(row.returned_total)
+  const paidTotal = fromMoneyDb(row.paid_total)
+  const netTotal = roundMoney(Math.max(0, total - returnedTotal))
+  return {
+    id: row.id,
+    ticketNumber: row.ticket_number,
+    creditTo: row.credit_to,
+    createdAt: row.created_at,
+    total,
+    returnedTotal,
+    netTotal,
+    paidTotal,
+    remaining: roundMoney(Math.max(0, netTotal - paidTotal)),
+    items: listCreditSaleItems(db, row.id).map((item) => ({
+      productName: item.product_name,
+      quantity: item.quantity,
+      returnedQuantity: Number(item.returned_quantity) || 0,
+      unitPrice: fromMoneyDb(item.unit_price),
+      lineTotal: fromMoneyDb(item.line_total)
+    })),
+    payments: listCreditPayments(db, row.id).map(mapCreditPayment)
+  }
+}
+
+export function listCreditSalesService(
+  filters: CreditListFilters = {}
+): ApiResult<CreditSaleEntry[]> {
+  const db = getDatabase()
+  return { ok: true, data: listCreditSales(db, filters).map((row) => mapCreditSaleEntry(db, row)) }
+}
+
+export function addCreditPaymentService(
+  input: AddCreditPaymentInput
+): ApiResult<CreditSaleEntry> {
+  const userId = getCurrentUserId()
+  if (!userId) return { ok: false, error: 'Sesión de usuario no válida' }
+
+  const amount = roundMoney(input.amount)
+  if (amount <= 0) return { ok: false, error: 'El monto del abono debe ser mayor a cero' }
+
+  const paymentMethod = normalizePaymentMethod(input.paymentMethod)
+  const db = getDatabase()
+  const cashSession = getOpenSession(db)
+  if (!cashSession) {
+    return { ok: false, error: 'Debe abrir la caja para registrar un abono' }
+  }
+
+  const sale = getSaleById(db, input.saleId)
+  if (!sale) return { ok: false, error: 'Venta no encontrada' }
+  if (sale.status !== 'completed') {
+    return { ok: false, error: 'Solo se puede cobrar un fiado de una venta completada' }
+  }
+  if (Number(sale.is_credit) !== 1) {
+    return { ok: false, error: 'Esta venta no es un fiado' }
+  }
+
+  const returnedTotal = fromMoneyDb(getReturnedTotalForSale(db, sale.id))
+  const netTotal = roundMoney(Math.max(0, fromMoneyDb(sale.total) - returnedTotal))
+  const paid = roundMoney(getCreditPaidTotal(db, sale.id))
+  const remaining = roundMoney(Math.max(0, netTotal - paid))
+  if (remaining <= 0.004) {
+    return { ok: false, error: 'Este fiado ya está saldado' }
+  }
+  if (amount > remaining + 0.004) {
+    return { ok: false, error: `El abono no puede ser mayor al saldo (${remaining.toFixed(2)})` }
+  }
+
+  try {
+    db.transaction(() => {
+      insertCreditPayment(db, {
+        saleId: sale.id,
+        sessionId: cashSession.id,
+        amount: toMoneyDb(amount),
+        paymentMethod,
+        kind: 'payment',
+        createdBy: userId
+      })
+      updateSaleAmountPaid(db, sale.id, toMoneyDb(roundMoney(getCreditPaidTotal(db, sale.id))))
+    })()
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Error al registrar el abono' }
+  }
+
+  const row = getCreditSaleRow(db, sale.id)
+  if (!row) return { ok: false, error: 'Abono registrado, pero no se pudo recargar el fiado' }
+  return { ok: true, data: mapCreditSaleEntry(db, row) }
+}
+
+export function listCreditPaymentsForSessionService(
+  sessionId: number
+): ApiResult<CreditPayment[]> {
+  const db = getDatabase()
+  const session = db.prepare('SELECT id FROM cash_sessions WHERE id = ?').get(sessionId)
+  if (!session) return { ok: false, error: 'Sesión de caja no encontrada' }
+  return {
+    ok: true,
+    data: listCreditPaymentsForSession(db, sessionId).map(mapCreditPayment)
   }
 }

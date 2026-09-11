@@ -1,9 +1,11 @@
 import { FormEvent, useEffect, useState } from 'react'
 import type { Category, Product, ProductInput } from '@shared/types/catalog'
 import { deriveBarcodeFromCatalog, normalizeScannedBarcode } from '@shared/lib/product-barcode'
+import { DOZEN_MIN_UNITS, DOZEN_UNITS, packSalePrice } from '@shared/lib/product-packs'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { Modal } from '../../components/ui/Modal'
+import { MoneyDisplay } from '../../components/ui/MoneyDisplay'
 import { MoneyInput } from '../../components/ui/MoneyInput'
 import { NumberInput } from '../../components/ui/NumberInput'
 import { Select } from '../../components/ui/Select'
@@ -34,6 +36,11 @@ function defaultForm(): ProductInput {
     costPrice: 0,
     priceRetail: 0,
     priceWholesale: null,
+    priceDozen: null,
+    planchaQty: null,
+    pricePlancha: null,
+    cajonQty: null,
+    priceCajon: null,
     isActive: true
   }
 }
@@ -55,6 +62,30 @@ function FormSection({
   )
 }
 
+function PackTotalHint({
+  units,
+  unitPrice,
+  emptyText
+}: {
+  units?: number | null
+  unitPrice?: number | null
+  emptyText: string
+}): React.JSX.Element {
+  const qty = units ?? 0
+  const price = unitPrice ?? 0
+  if (qty > 0 && price > 0) {
+    const total = packSalePrice(price, qty)
+    return (
+      <p className="mt-1 text-xs text-[rgb(var(--text-muted))]">
+        Al vender se cobra <MoneyDisplay amount={price} size="sm" className="inline text-xs" /> ×{' '}
+        {qty} ={' '}
+        <MoneyDisplay amount={total} size="sm" className="inline text-xs font-medium" />
+      </p>
+    )
+  }
+  return <p className="mt-1 text-xs text-[rgb(var(--text-muted))]">{emptyText}</p>
+}
+
 export function ProductFormModal({
   open,
   product,
@@ -71,6 +102,11 @@ export function ProductFormModal({
     costPrice?: string
     priceRetail?: string
     priceWholesale?: string
+    priceDozen?: string
+    planchaQty?: string
+    pricePlancha?: string
+    cajonQty?: string
+    priceCajon?: string
     stockMin?: string
   }>({})
   const [saving, setSaving] = useState(false)
@@ -99,6 +135,11 @@ export function ProductFormModal({
         costPrice: product.costPrice,
         priceRetail: product.priceRetail,
         priceWholesale: product.priceWholesale,
+        priceDozen: product.priceDozen,
+        planchaQty: product.planchaQty,
+        pricePlancha: product.pricePlancha,
+        cajonQty: product.cajonQty,
+        priceCajon: product.priceCajon,
         isActive: product.isActive
       })
     } else if (initialBarcode?.trim()) {
@@ -147,8 +188,31 @@ export function ProductFormModal({
     }
     if (isCreate && (form.priceWholesale == null || form.priceWholesale <= 0)) {
       next.priceWholesale = 'El precio por mayor es obligatorio'
-    } else     if (form.priceWholesale != null && form.priceWholesale < 0) {
+    } else if (form.priceWholesale != null && form.priceWholesale < 0) {
       next.priceWholesale = 'El precio por mayor no puede ser negativo'
+    }
+    if ((form.priceDozen ?? 0) < 0) {
+      next.priceDozen = 'El precio por unidad de la docena no puede ser negativo'
+    }
+    const planchaQty = form.planchaQty ?? 0
+    const pricePlancha = form.pricePlancha ?? 0
+    if (planchaQty < 0) next.planchaQty = 'La cantidad no puede ser negativa'
+    if (pricePlancha < 0) next.pricePlancha = 'El precio no puede ser negativo'
+    if (planchaQty > 0 && pricePlancha <= 0) {
+      next.pricePlancha = 'Indique el precio por unidad de la plancha'
+    }
+    if (pricePlancha > 0 && planchaQty <= 0) {
+      next.planchaQty = 'Indique las unidades por plancha'
+    }
+    const cajonQty = form.cajonQty ?? 0
+    const priceCajon = form.priceCajon ?? 0
+    if (cajonQty < 0) next.cajonQty = 'La cantidad no puede ser negativa'
+    if (priceCajon < 0) next.priceCajon = 'El precio no puede ser negativo'
+    if (cajonQty > 0 && priceCajon <= 0) {
+      next.priceCajon = 'Indique el precio por unidad del cajón'
+    }
+    if (priceCajon > 0 && cajonQty <= 0) {
+      next.cajonQty = 'Indique las unidades por cajón'
     }
     if ((form.stockMin ?? 0) > (form.stock ?? 0)) {
       next.stockMin = 'El stock mínimo no puede ser mayor que el stock actual'
@@ -187,6 +251,12 @@ export function ProductFormModal({
       description: form.description?.trim() || null,
       priceWholesale:
         form.priceWholesale != null && form.priceWholesale > 0 ? form.priceWholesale : null,
+      priceDozen: form.priceDozen != null && form.priceDozen > 0 ? form.priceDozen : null,
+      planchaQty: form.planchaQty != null && form.planchaQty > 0 ? form.planchaQty : null,
+      pricePlancha:
+        form.pricePlancha != null && form.pricePlancha > 0 ? form.pricePlancha : null,
+      cajonQty: form.cajonQty != null && form.cajonQty > 0 ? form.cajonQty : null,
+      priceCajon: form.priceCajon != null && form.priceCajon > 0 ? form.priceCajon : null,
       stockMin: form.stockMin ?? 0,
       pendingImagePath,
       removeImage,
@@ -349,6 +419,88 @@ export function ProductFormModal({
             onChange={(v) => setForm({ ...form, stockMin: v })}
             error={fieldErrors.stockMin}
           />
+          <p className="text-sm font-medium">Empaques (opcional)</p>
+          <p className="text-xs text-[rgb(var(--text-muted))]">
+            El precio de docena es por unidad y se puede usar desde 3 unidades. Plancha y cajón se
+            venden por empaque completo.
+          </p>
+          <div className="grid gap-4 md:grid-cols-3">
+            <div>
+              <MoneyInput
+                label="Precio por unidad (docena)"
+                value={form.priceDozen ?? 0}
+                onChange={(v) =>
+                  setForm({ ...form, priceDozen: v > 0 ? v : null })
+                }
+                error={fieldErrors.priceDozen}
+              />
+              <PackTotalHint
+                units={DOZEN_UNITS}
+                unitPrice={form.priceDozen}
+                emptyText={`Desde ${DOZEN_MIN_UNITS} unidades se usa este precio. ${DOZEN_UNITS} und. es la referencia de una docena.`}
+              />
+            </div>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <NumberInput
+                label="Plancha (cantidad)"
+                min={0}
+                emptyValue={0}
+                value={form.planchaQty ?? 0}
+                onChange={(v) =>
+                  setForm({ ...form, planchaQty: v > 0 ? v : null })
+                }
+                error={fieldErrors.planchaQty}
+              />
+              <p className="mt-1 text-xs text-[rgb(var(--text-muted))]">
+                Unidades que contiene una plancha. 0 si no aplica.
+              </p>
+            </div>
+            <div>
+              <MoneyInput
+                label="Precio por unidad (plancha)"
+                value={form.pricePlancha ?? 0}
+                onChange={(v) =>
+                  setForm({ ...form, pricePlancha: v > 0 ? v : null })
+                }
+                error={fieldErrors.pricePlancha}
+              />
+              <PackTotalHint
+                units={form.planchaQty}
+                unitPrice={form.pricePlancha}
+                emptyText="Se cobra × la cantidad de la plancha."
+              />
+            </div>
+            <div>
+              <NumberInput
+                label="Cajón (cantidad)"
+                min={0}
+                emptyValue={0}
+                value={form.cajonQty ?? 0}
+                onChange={(v) => setForm({ ...form, cajonQty: v > 0 ? v : null })}
+                error={fieldErrors.cajonQty}
+              />
+              <p className="mt-1 text-xs text-[rgb(var(--text-muted))]">
+                Unidades que contiene un cajón. 0 si no aplica.
+              </p>
+            </div>
+            <div>
+              <MoneyInput
+                label="Precio por unidad (cajón)"
+                value={form.priceCajon ?? 0}
+                onChange={(v) =>
+                  setForm({ ...form, priceCajon: v > 0 ? v : null })
+                }
+                error={fieldErrors.priceCajon}
+              />
+              <PackTotalHint
+                units={form.cajonQty}
+                unitPrice={form.priceCajon}
+                emptyText="Se cobra × la cantidad del cajón."
+              />
+            </div>
+          </div>
         </FormSection>
 
         <FormSection title="Detalles opcionales">

@@ -18,6 +18,11 @@ export interface ProductRow {
   cost_price: string
   price_retail: string
   price_wholesale: string
+  price_dozen: string
+  plancha_qty: number
+  price_plancha: string
+  cajon_qty: number
+  price_cajon: string
   image_path: string | null
   is_active: number
   created_at: string
@@ -28,6 +33,7 @@ const SELECT_FIELDS = `
   p.id, p.product_code, p.name, p.barcode, p.category_id, c.name AS category_name,
   p.stock, p.stock_min, p.brand, p.size, p.color, p.description,
   p.cost_price, p.price_retail, p.price_wholesale,
+  p.price_dozen, p.plancha_qty, p.price_plancha, p.cajon_qty, p.price_cajon,
   p.image_path, p.is_active, p.created_at, p.updated_at
 `
 
@@ -147,6 +153,11 @@ export function insertProduct(
     costPrice: string
     priceRetail: string
     priceWholesale: string
+    priceDozen: string
+    planchaQty: number
+    pricePlancha: string
+    cajonQty: number
+    priceCajon: string
     imagePath: string | null
     isActive: number
   }
@@ -155,8 +166,10 @@ export function insertProduct(
     .prepare(
       `INSERT INTO products (
         product_code, name, barcode, category_id, stock, stock_min, brand, size, color, description,
-        cost_price, price_retail, price_wholesale, image_path, is_active
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        cost_price, price_retail, price_wholesale,
+        price_dozen, plancha_qty, price_plancha, cajon_qty, price_cajon,
+        image_path, is_active
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       data.productCode,
@@ -172,6 +185,11 @@ export function insertProduct(
       data.costPrice,
       data.priceRetail,
       data.priceWholesale,
+      data.priceDozen,
+      data.planchaQty,
+      data.pricePlancha,
+      data.cajonQty,
+      data.priceCajon,
       data.imagePath,
       data.isActive
     )
@@ -194,6 +212,11 @@ export function updateProduct(
     costPrice: string
     priceRetail: string
     priceWholesale: string
+    priceDozen: string
+    planchaQty: number
+    pricePlancha: string
+    cajonQty: number
+    priceCajon: string
     imagePath: string | null
     isActive: number
   }
@@ -203,6 +226,7 @@ export function updateProduct(
       product_code = ?, name = ?, barcode = ?, category_id = ?, stock_min = ?,
       brand = ?, size = ?, color = ?, description = ?,
       cost_price = ?, price_retail = ?, price_wholesale = ?,
+      price_dozen = ?, plancha_qty = ?, price_plancha = ?, cajon_qty = ?, price_cajon = ?,
       image_path = ?, is_active = ?, updated_at = datetime('now')
      WHERE id = ?`
   ).run(
@@ -218,6 +242,11 @@ export function updateProduct(
     data.costPrice,
     data.priceRetail,
     data.priceWholesale,
+    data.priceDozen,
+    data.planchaQty,
+    data.pricePlancha,
+    data.cajonQty,
+    data.priceCajon,
     data.imagePath,
     data.isActive,
     id

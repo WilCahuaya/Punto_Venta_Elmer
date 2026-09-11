@@ -3,6 +3,7 @@ import { Badge } from '../../components/ui/Badge'
 import { Button } from '../../components/ui/Button'
 import { MoneyDisplay } from '../../components/ui/MoneyDisplay'
 import { formatDateTime } from '../../lib/datetime'
+import { salePaymentLabel } from '@shared/lib/payment'
 
 interface SalesListTableProps {
   sales: SaleListEntry[]
@@ -30,6 +31,7 @@ export function SalesListTable({
           <tr className="text-left">
             <th className="px-3 py-2 font-medium">Estado</th>
             <th className="px-3 py-2 font-medium">Ticket</th>
+            <th className="px-3 py-2 font-medium">Pago</th>
             <th className="px-3 py-2 font-medium">Fecha</th>
             <th className="px-3 py-2 font-medium text-center">Ítems</th>
             <th className="px-3 py-2 font-medium text-right">Total / Neto</th>
@@ -39,7 +41,7 @@ export function SalesListTable({
         <tbody>
           {sales.length === 0 ? (
             <tr>
-              <td colSpan={6} className="px-4 py-8 text-center text-[rgb(var(--text-muted))]">
+              <td colSpan={7} className="px-4 py-8 text-center text-[rgb(var(--text-muted))]">
                 {emptyMessage}
               </td>
             </tr>
@@ -58,6 +60,16 @@ export function SalesListTable({
                   </Badge>
                 </td>
                 <td className="px-3 py-2 font-mono">{s.ticketNumber}</td>
+                <td className="px-3 py-2">
+                  <Badge variant={s.isCredit ? 'warning' : s.paymentMethod === 'yape' ? 'default' : 'muted'}>
+                    {salePaymentLabel(s)}
+                  </Badge>
+                  {s.isCredit && s.creditTo && (
+                    <div className="mt-0.5 max-w-[160px] truncate text-xs text-[rgb(var(--text-muted))]">
+                      {s.creditTo}
+                    </div>
+                  )}
+                </td>
                 <td className="px-3 py-2 text-[rgb(var(--text-muted))]">
                   {formatDateTime(s.createdAt)}
                 </td>

@@ -1,0 +1,10 @@
+import type { ApiResult } from '@shared/types/api';
+import type { BackupEntry, BackupStatus, BackupType } from '@shared/types/backup';
+export declare function createBackupService(type: BackupType): Promise<ApiResult<BackupEntry>>;
+export declare function runAutoBackupIfNeeded(): Promise<void>;
+export declare function listBackupsService(): ApiResult<BackupEntry[]>;
+export declare function getBackupStatusService(): ApiResult<BackupStatus>;
+export declare function restoreBackupService(id: number): Promise<ApiResult<null>>;
+export declare function exportBackupService(id: number): Promise<ApiResult<string>>;
+export declare function importBackupService(): Promise<ApiResult<BackupEntry>>;
+export declare function deleteBackupService(id: number): ApiResult<null>;

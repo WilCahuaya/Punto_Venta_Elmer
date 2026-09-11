@@ -1,0 +1,11 @@
+import type { ApiResult } from '@shared/types/api';
+import type { AddCreditPaymentInput, CreateSaleInput, CreditListFilters, CreditPayment, CreditSaleEntry, PartialReturnInput, Sale, SaleDetail, SaleListEntry } from '@shared/types/sales';
+export declare function listSalesForSessionService(sessionId: number): ApiResult<SaleListEntry[]>;
+export declare function createSaleService(input: CreateSaleInput): ApiResult<Sale>;
+export declare function getSaleService(id: number): ApiResult<Sale>;
+export declare function getSaleDetailService(id: number): ApiResult<SaleDetail>;
+export declare function voidSaleService(saleId: number, reason: string): ApiResult<Sale>;
+export declare function partialReturnService(input: PartialReturnInput): ApiResult<SaleDetail>;
+export declare function listCreditSalesService(filters?: CreditListFilters): ApiResult<CreditSaleEntry[]>;
+export declare function addCreditPaymentService(input: AddCreditPaymentInput): ApiResult<CreditSaleEntry>;
+export declare function listCreditPaymentsForSessionService(sessionId: number): ApiResult<CreditPayment[]>;

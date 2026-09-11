@@ -1,0 +1,22 @@
+import { registerBackupIpc } from '../modules/backup/backup.ipc';
+import { registerAuthIpc } from '../modules/auth/auth.ipc';
+import { registerDashboardIpc } from '../modules/dashboard/dashboard.ipc';
+import { registerLabelsIpc } from '../modules/labels/labels.ipc';
+import { registerReportsIpc } from '../modules/reports/reports.ipc';
+import { registerCashIpc } from '../modules/cash/cash.ipc';
+import { registerSalesIpc } from '../modules/sales/sales.ipc';
+import { registerCategoriesIpc } from '../modules/categories/categories.ipc';
+import { registerProductsIpc } from '../modules/products/products.ipc';
+import { registerSettingsIpc } from '../modules/settings/settings.ipc';
+export function registerIpcHandlers() {
+    registerAuthIpc();
+    registerSettingsIpc();
+    registerCategoriesIpc();
+    registerProductsIpc();
+    registerCashIpc();
+    registerSalesIpc();
+    registerDashboardIpc();
+    registerLabelsIpc();
+    registerReportsIpc();
+    registerBackupIpc();
+}

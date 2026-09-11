@@ -2,10 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { Product } from '@shared/types/catalog'
 import { productToPosProduct } from '@shared/types/sales'
+import { minQtyForCartLine } from '@shared/lib/product-packs'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { MoneyDisplay } from '../../components/ui/MoneyDisplay'
-import { PaymentModal } from '../../features/pos/PaymentModal'
+import { PaymentModal, type PaymentConfirmPayload } from '../../features/pos/PaymentModal'
 import { PrintTicketPromptModal } from '../../features/pos/PrintTicketPromptModal'
 import { QuantityModal } from '../../features/pos/QuantityModal'
 import { ServiceModal } from '../../features/pos/ServiceModal'
@@ -138,7 +139,12 @@ export function PosPage(): React.JSX.Element {
     focusBarcode()
   }
 
-  function handleConfirmQty(quantity: number, unitPrice: number, priceLabel: string): void {
+  function handleConfirmQty(
+    quantity: number,
+    unitPrice: number,
+    priceLabel: string,
+    unitsPerPack: number
+  ): void {
     if (!qtyProduct) return
     addProduct(
       {
@@ -150,17 +156,21 @@ export function PosPage(): React.JSX.Element {
       },
       quantity,
       unitPrice,
-      priceLabel
+      priceLabel,
+      unitsPerPack
     )
     setQtyProduct(null)
     focusBarcode()
   }
 
-  async function handlePayment(amountPaid: number): Promise<void> {
+  async function handlePayment(payload: PaymentConfirmPayload): Promise<void> {
     const result = await window.api.sales.create({
       items: toSaleItems(),
-      amountPaid,
-      discount
+      amountPaid: payload.amountPaid,
+      discount,
+      paymentMethod: payload.paymentMethod,
+      isCredit: payload.isCredit,
+      creditTo: payload.creditTo
     })
 
     if (!result.ok) {
@@ -366,6 +376,9 @@ export function PosPage(): React.JSX.Element {
                         <div className="font-medium">{line.name}</div>
                         <div className="text-xs text-[rgb(var(--text-muted))]">
                           {line.priceLabel}
+                          {line.unitsPerPack > 1 && (
+                            <span> · −{line.quantity * line.unitsPerPack} und.</span>
+                          )}
                           {line.barcode && (
                             <span className="ml-2 font-mono">{line.barcode}</span>
                           )}
@@ -377,7 +390,7 @@ export function PosPage(): React.JSX.Element {
                         ) : (
                           <input
                             type="number"
-                            min={1}
+                            min={minQtyForCartLine(line.priceLabel)}
                             max={line.maxStock}
                             value={line.quantity}
                             onChange={(e) =>

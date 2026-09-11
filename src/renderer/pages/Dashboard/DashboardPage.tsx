@@ -16,6 +16,7 @@ import {
   startOfWeekMonday
 } from '../../lib/datetime'
 import { useCashStore } from '../../stores/cash.store'
+import { salePaymentLabel } from '@shared/lib/payment'
 
 function saleStatusLabel(status: ReportSaleRow['status']): string {
   return status === 'voided' ? 'ANULADA' : 'COMPLETADA'
@@ -220,10 +221,16 @@ export function DashboardPage(): React.JSX.Element {
           <h3 className="mb-3 text-sm font-medium text-[rgb(var(--text-muted))]">
             Resumen del período
           </h3>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
             <KpiCard title="Ventas" value={report.completedCount} suffix="tickets" />
             <KpiCard title="Ingresos netos">
               <MoneyDisplay amount={report.netCompletedTotal} size="lg" />
+            </KpiCard>
+            <KpiCard title="Efectivo">
+              <MoneyDisplay amount={report.cashNetTotal} size="lg" />
+            </KpiCard>
+            <KpiCard title="Yape">
+              <MoneyDisplay amount={report.yapeNetTotal} size="lg" />
             </KpiCard>
             <KpiCard title="Devoluciones">
               <MoneyDisplay
@@ -294,6 +301,7 @@ export function DashboardPage(): React.JSX.Element {
               <tr className="border-b border-surface-border text-left">
                 <th className="px-4 py-2.5 font-medium">Ticket</th>
                 <th className="px-4 py-2.5 font-medium">Fecha</th>
+                <th className="px-4 py-2.5 font-medium">Pago</th>
                 <th className="px-4 py-2.5 font-medium">Estado</th>
                 <th className="px-4 py-2.5 text-right font-medium">Total</th>
                 <th className="px-4 py-2.5 text-right font-medium">Acciones</th>
@@ -302,13 +310,13 @@ export function DashboardPage(): React.JSX.Element {
             <tbody>
               {loading && !report ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-10 text-center text-[rgb(var(--text-muted))]">
+                  <td colSpan={6} className="px-4 py-10 text-center text-[rgb(var(--text-muted))]">
                     Cargando tickets...
                   </td>
                 </tr>
               ) : filteredSales.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-10 text-center text-[rgb(var(--text-muted))]">
+                  <td colSpan={6} className="px-4 py-10 text-center text-[rgb(var(--text-muted))]">
                     {ticketQuery
                       ? `Ningún ticket coincide con «${ticketQuery}»`
                       : 'Sin ventas en estas fechas'}
@@ -334,6 +342,11 @@ export function DashboardPage(): React.JSX.Element {
                           <MoneyDisplay amount={s.returnedTotal} size="sm" className="inline" />
                         </div>
                       )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge variant={s.isCredit ? 'warning' : s.paymentMethod === 'yape' ? 'default' : 'muted'}>
+                        {salePaymentLabel(s)}
+                      </Badge>
                     </td>
                     <td className="px-4 py-3">
                       <Badge variant={s.status === 'voided' ? 'warning' : 'success'}>

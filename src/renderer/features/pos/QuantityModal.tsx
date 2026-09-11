@@ -1,18 +1,33 @@
 import { FormEvent, useEffect, useRef, useState } from 'react'
 import type { PosProduct } from '@shared/types/sales'
 import { roundMoney } from '@shared/lib/currency'
+import {
+  DOZEN_MIN_UNITS,
+  DOZEN_UNITS,
+  isCajonEnabled,
+  isDozenEnabled,
+  isPlanchaEnabled,
+  maxPacksForStock,
+  minQtyForPackChoice,
+  packSalePrice,
+  type PackPriceChoice,
+  unitsPerPackForChoice
+} from '@shared/lib/product-packs'
 import { Button } from '../../components/ui/Button'
 import { Modal } from '../../components/ui/Modal'
 import { MoneyDisplay } from '../../components/ui/MoneyDisplay'
 import { MoneyInput } from '../../components/ui/MoneyInput'
 
-type PriceChoice = 'retail' | 'wholesale' | 'manual'
-
 interface QuantityModalProps {
   open: boolean
   product: PosProduct | null
   onClose: () => void
-  onConfirm: (quantity: number, unitPrice: number, priceLabel: string) => void
+  onConfirm: (
+    quantity: number,
+    unitPrice: number,
+    priceLabel: string,
+    unitsPerPack: number
+  ) => void
 }
 
 export function QuantityModal({
@@ -23,12 +38,29 @@ export function QuantityModal({
 }: QuantityModalProps): React.JSX.Element | null {
   const [qty, setQty] = useState(1)
   const [qtyText, setQtyText] = useState('1')
-  const [priceChoice, setPriceChoice] = useState<PriceChoice>('retail')
+  const [priceChoice, setPriceChoice] = useState<PackPriceChoice>('retail')
   const [manualPrice, setManualPrice] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const hasWholesale =
     product != null && product.priceWholesale != null && product.priceWholesale > 0
+  const hasDozen = product != null && isDozenEnabled(product)
+  const hasPlancha = product != null && isPlanchaEnabled(product)
+  const hasCajon = product != null && isCajonEnabled(product)
+
+  const unitsPerPack = product ? unitsPerPackForChoice(priceChoice, product) : 1
+  const minQty = minQtyForPackChoice(priceChoice)
+  const maxQty = product ? maxPacksForStock(product.stock, unitsPerPack) : 0
+  const dozenAvailable = Boolean(hasDozen && product && product.stock >= DOZEN_MIN_UNITS)
+
+  function applyQty(next: number, choice: PackPriceChoice = priceChoice): void {
+    const min = minQtyForPackChoice(choice)
+    const packUnits = product ? unitsPerPackForChoice(choice, product) : 1
+    const max = product ? maxPacksForStock(product.stock, packUnits) : 0
+    const clamped = Math.min(max, Math.max(min, next))
+    setQty(clamped)
+    setQtyText(String(clamped))
+  }
 
   useEffect(() => {
     if (open && product) {
@@ -40,12 +72,25 @@ export function QuantityModal({
     }
   }, [open, product?.id])
 
+  useEffect(() => {
+    if (!open || !product) return
+    if (qty > maxQty) {
+      const next = maxQty >= minQty ? maxQty : minQty
+      setQty(next)
+      setQtyText(String(next))
+      return
+    }
+    if (qty < minQty && maxQty >= minQty) {
+      setQty(minQty)
+      setQtyText(String(minQty))
+    }
+  }, [open, product, priceChoice, maxQty, minQty, qty])
+
   function commitQty(): void {
     if (!product) return
     const trimmed = qtyText.trim()
     if (trimmed === '') {
-      setQty(1)
-      setQtyText('1')
+      applyQty(1)
       return
     }
     const n = Number(trimmed)
@@ -53,9 +98,7 @@ export function QuantityModal({
       setQtyText(String(qty))
       return
     }
-    const next = Math.min(product.stock, Math.max(1, Math.floor(n)))
-    setQty(next)
-    setQtyText(String(next))
+    applyQty(Math.floor(n))
   }
 
   if (!open || !product) return null
@@ -64,12 +107,24 @@ export function QuantityModal({
     if (priceChoice === 'wholesale' && hasWholesale) {
       return roundMoney(product!.priceWholesale!)
     }
+    if (priceChoice === 'dozen' && hasDozen) {
+      return roundMoney(product!.priceDozen!)
+    }
+    if (priceChoice === 'plancha' && hasPlancha) {
+      return packSalePrice(product!.pricePlancha!, product!.planchaQty ?? 0)
+    }
+    if (priceChoice === 'cajon' && hasCajon) {
+      return packSalePrice(product!.priceCajon!, product!.cajonQty ?? 0)
+    }
     if (priceChoice === 'manual') return roundMoney(manualPrice)
     return roundMoney(product!.priceRetail)
   }
 
   function resolvePriceLabel(): string {
     if (priceChoice === 'wholesale') return 'Mayor'
+    if (priceChoice === 'dozen') return `Docena · desde ${DOZEN_MIN_UNITS} und.`
+    if (priceChoice === 'plancha') return `Plancha · ${product!.planchaQty} und.`
+    if (priceChoice === 'cajon') return `Cajón · ${product!.cajonQty} und.`
     if (priceChoice === 'manual') return 'Manual'
     return 'Menor'
   }
@@ -78,10 +133,15 @@ export function QuantityModal({
 
   function handleSubmit(e: FormEvent): void {
     e.preventDefault()
-    if (qty <= 0 || qty > product!.stock) return
+    if (qty < minQty || maxQty < minQty || qty > maxQty) return
     if (unitPrice <= 0) return
-    onConfirm(qty, unitPrice, resolvePriceLabel())
+    onConfirm(qty, unitPrice, resolvePriceLabel(), unitsPerPack)
     onClose()
+  }
+
+  function selectChoice(choice: PackPriceChoice): void {
+    setPriceChoice(choice)
+    applyQty(Math.max(qty, minQtyForPackChoice(choice)), choice)
   }
 
   return (
@@ -95,7 +155,7 @@ export function QuantityModal({
           <Button variant="secondary" type="button" onClick={onClose}>
             Cancelar
           </Button>
-          <Button type="submit" form="qty-form" disabled={unitPrice <= 0}>
+          <Button type="submit" form="qty-form" disabled={unitPrice <= 0 || maxQty < minQty}>
             Agregar
           </Button>
         </>
@@ -109,34 +169,57 @@ export function QuantityModal({
 
         <fieldset className="space-y-2">
           <legend className="text-sm font-medium">Precio de venta</legend>
-          <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-surface-border px-3 py-2 hover:bg-surface-elevated">
-            <input
-              type="radio"
-              name="priceChoice"
-              checked={priceChoice === 'retail'}
-              onChange={() => setPriceChoice('retail')}
-            />
-            <span className="flex-1 text-sm">Precio menor</span>
-            <MoneyDisplay amount={product.priceRetail} size="sm" />
-          </label>
+          <PriceOption
+            checked={priceChoice === 'retail'}
+            onChange={() => selectChoice('retail')}
+            label="Precio menor"
+            amount={product.priceRetail}
+          />
           {hasWholesale && (
-            <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-surface-border px-3 py-2 hover:bg-surface-elevated">
-              <input
-                type="radio"
-                name="priceChoice"
-                checked={priceChoice === 'wholesale'}
-                onChange={() => setPriceChoice('wholesale')}
-              />
-              <span className="flex-1 text-sm">Precio por mayor</span>
-              <MoneyDisplay amount={product.priceWholesale!} size="sm" />
-            </label>
+            <PriceOption
+              checked={priceChoice === 'wholesale'}
+              onChange={() => selectChoice('wholesale')}
+              label="Precio por mayor"
+              amount={product.priceWholesale!}
+            />
+          )}
+          {hasDozen && (
+            <PriceOption
+              checked={priceChoice === 'dozen'}
+              onChange={() => selectChoice('dozen')}
+              label={`Docena (desde ${DOZEN_MIN_UNITS} und.)`}
+              amount={product.priceDozen!}
+              packHintUnits={DOZEN_UNITS}
+              packHintAmount={packSalePrice(product.priceDozen!, DOZEN_UNITS)}
+              disabled={!dozenAvailable}
+            />
+          )}
+          {hasPlancha && (
+            <PriceOption
+              checked={priceChoice === 'plancha'}
+              onChange={() => selectChoice('plancha')}
+              label={`Plancha (${product.planchaQty} und.)`}
+              amount={packSalePrice(product.pricePlancha!, product.planchaQty ?? 0)}
+              unitAmount={product.pricePlancha!}
+              disabled={maxPacksForStock(product.stock, product.planchaQty ?? 0) <= 0}
+            />
+          )}
+          {hasCajon && (
+            <PriceOption
+              checked={priceChoice === 'cajon'}
+              onChange={() => selectChoice('cajon')}
+              label={`Cajón (${product.cajonQty} und.)`}
+              amount={packSalePrice(product.priceCajon!, product.cajonQty ?? 0)}
+              unitAmount={product.priceCajon!}
+              disabled={maxPacksForStock(product.stock, product.cajonQty ?? 0) <= 0}
+            />
           )}
           <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-surface-border px-3 py-2 hover:bg-surface-elevated">
             <input
               type="radio"
               name="priceChoice"
               checked={priceChoice === 'manual'}
-              onChange={() => setPriceChoice('manual')}
+              onChange={() => selectChoice('manual')}
               className="mt-1"
             />
             <div className="flex-1 space-y-2">
@@ -153,18 +236,14 @@ export function QuantityModal({
         </fieldset>
 
         <label className="flex flex-col gap-2">
-          <span className="text-sm font-medium">Cantidad</span>
+          <span className="text-sm font-medium">
+            {unitsPerPack > 1 ? 'Cantidad de empaques' : 'Cantidad'}
+          </span>
           <div className="flex items-center gap-2">
             <Button
               type="button"
               variant="secondary"
-              onClick={() => {
-                setQty((q) => {
-                  const next = Math.max(1, q - 1)
-                  setQtyText(String(next))
-                  return next
-                })
-              }}
+              onClick={() => applyQty(qty - 1)}
             >
               −
             </Button>
@@ -183,17 +262,22 @@ export function QuantityModal({
             <Button
               type="button"
               variant="secondary"
-              onClick={() => {
-                setQty((q) => {
-                  const next = Math.min(product.stock, q + 1)
-                  setQtyText(String(next))
-                  return next
-                })
-              }}
+              onClick={() => applyQty(qty + 1)}
             >
               +
             </Button>
           </div>
+          {unitsPerPack > 1 && (
+            <p className="text-xs text-[rgb(var(--text-muted))]">
+              Se descontarán {qty * unitsPerPack} unidades del stock
+              {maxQty > 0 ? ` (máx. ${maxQty} empaques)` : ''}
+            </p>
+          )}
+          {priceChoice === 'dozen' && (
+            <p className="text-xs text-[rgb(var(--text-muted))]">
+              Mínimo {DOZEN_MIN_UNITS} unidades para usar el precio de docena.
+            </p>
+          )}
         </label>
 
         <div className="rounded-lg bg-brand/5 px-3 py-2 text-center">
@@ -204,5 +288,57 @@ export function QuantityModal({
         </div>
       </form>
     </Modal>
+  )
+}
+
+function PriceOption({
+  checked,
+  onChange,
+  label,
+  amount,
+  unitAmount,
+  packHintUnits,
+  packHintAmount,
+  disabled
+}: {
+  checked: boolean
+  onChange: () => void
+  label: string
+  amount: number
+  unitAmount?: number
+  packHintUnits?: number
+  packHintAmount?: number
+  disabled?: boolean
+}): React.JSX.Element {
+  return (
+    <label
+      className={[
+        'flex items-center gap-2 rounded-lg border border-surface-border px-3 py-2',
+        disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:bg-surface-elevated'
+      ].join(' ')}
+    >
+      <input
+        type="radio"
+        name="priceChoice"
+        checked={checked}
+        onChange={onChange}
+        disabled={disabled}
+      />
+      <span className="flex-1 text-sm">{label}</span>
+      <span className="text-right">
+        <MoneyDisplay amount={amount} size="sm" />
+        {unitAmount != null && unitAmount > 0 && (
+          <span className="block text-[11px] text-[rgb(var(--text-muted))]">
+            <MoneyDisplay amount={unitAmount} size="sm" className="inline text-[11px]" /> c/u
+          </span>
+        )}
+        {packHintUnits != null && packHintAmount != null && packHintAmount > 0 && (
+          <span className="block text-[11px] text-[rgb(var(--text-muted))]">
+            {packHintUnits} und.:{' '}
+            <MoneyDisplay amount={packHintAmount} size="sm" className="inline text-[11px]" />
+          </span>
+        )}
+      </span>
+    </label>
   )
 }

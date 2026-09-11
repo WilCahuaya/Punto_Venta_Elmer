@@ -1,0 +1,152 @@
+import { getDatabase } from '../../database/connection';
+import { countActiveSubcategories, countAllProductsInCategory, countAllSubcategories, countProductsInCategory, getCategoryById, hardDeleteCategory, getCategoryByNameAndParent, insertCategory, listCategories, softDeleteCategory, updateCategory } from './categories.repository';
+function mapRow(row) {
+    return {
+        id: row.id,
+        parentId: row.parent_id,
+        parentName: row.parent_name,
+        name: row.name,
+        description: row.description,
+        isActive: row.is_active === 1,
+        sortOrder: row.sort_order,
+        productCount: row.product_count,
+        subcategoryCount: row.subcategory_count,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at
+    };
+}
+function validateInput(input, categoryId) {
+    if (!input.name?.trim())
+        return 'El nombre es obligatorio';
+    if (input.name.trim().length > 100)
+        return 'El nombre es demasiado largo';
+    const parentId = input.parentId ?? null;
+    if (parentId != null) {
+        if (categoryId && parentId === categoryId) {
+            return 'Una categoría no puede ser subcategoría de sí misma';
+        }
+        const db = getDatabase();
+        const parent = getCategoryById(db, parentId);
+        if (!parent || parent.is_active !== 1)
+            return 'La categoría padre no es válida';
+        if (parent.parent_id != null)
+            return 'Solo se permiten subcategorías de un nivel (categoría principal)';
+    }
+    return null;
+}
+export function listCategoriesService(filters = {}) {
+    const db = getDatabase();
+    const rows = listCategories(db, filters);
+    return { ok: true, data: rows.map(mapRow) };
+}
+export function getCategoryService(id) {
+    const db = getDatabase();
+    const row = getCategoryById(db, id);
+    if (!row)
+        return { ok: false, error: 'Categoría no encontrada' };
+    return { ok: true, data: mapRow(row) };
+}
+export function createCategoryService(input) {
+    const err = validateInput(input);
+    if (err)
+        return { ok: false, error: err };
+    const db = getDatabase();
+    const name = input.name.trim();
+    const parentId = input.parentId ?? null;
+    if (getCategoryByNameAndParent(db, name, parentId)) {
+        return { ok: false, error: 'Ya existe una categoría con ese nombre en el mismo nivel' };
+    }
+    const id = insertCategory(db, {
+        parentId,
+        name,
+        description: input.description?.trim() || null,
+        sortOrder: input.sortOrder ?? 0,
+        isActive: input.isActive === false ? 0 : 1
+    });
+    return getCategoryService(id);
+}
+export function updateCategoryService(id, input) {
+    const err = validateInput(input, id);
+    if (err)
+        return { ok: false, error: err };
+    const db = getDatabase();
+    const existing = getCategoryById(db, id);
+    if (!existing)
+        return { ok: false, error: 'Categoría no encontrada' };
+    const name = input.name.trim();
+    const parentId = input.parentId ?? null;
+    if (getCategoryByNameAndParent(db, name, parentId, id)) {
+        return { ok: false, error: 'Ya existe una categoría con ese nombre en el mismo nivel' };
+    }
+    if (parentId != null && countActiveSubcategories(db, id) > 0) {
+        return {
+            ok: false,
+            error: 'No puede convertir una categoría con subcategorías en subcategoría'
+        };
+    }
+    updateCategory(db, id, {
+        parentId,
+        name,
+        description: input.description?.trim() || null,
+        sortOrder: input.sortOrder ?? existing.sort_order,
+        isActive: input.isActive === false ? 0 : 1
+    });
+    return getCategoryService(id);
+}
+/** Desactiva la categoría (paso previo a eliminarla de la base de datos). */
+export function deactivateCategoryService(id) {
+    const db = getDatabase();
+    const existing = getCategoryById(db, id);
+    if (!existing)
+        return { ok: false, error: 'Categoría no encontrada' };
+    if (existing.is_active === 0) {
+        return { ok: false, error: 'La categoría ya está inactiva' };
+    }
+    const activeProducts = countProductsInCategory(db, id);
+    if (activeProducts > 0) {
+        return {
+            ok: false,
+            error: `No se puede desactivar: tiene ${activeProducts} producto(s) activo(s). Desactívelos primero.`
+        };
+    }
+    const subs = countActiveSubcategories(db, id);
+    if (subs > 0) {
+        return {
+            ok: false,
+            error: `No se puede desactivar: tiene ${subs} subcategoría(s) activa(s). Desactívelas primero.`
+        };
+    }
+    softDeleteCategory(db, id);
+    return { ok: true, data: null };
+}
+/** Elimina la categoría de la base de datos (solo si ya está inactiva). */
+export function destroyCategoryService(id) {
+    const db = getDatabase();
+    const existing = getCategoryById(db, id);
+    if (!existing)
+        return { ok: false, error: 'Categoría no encontrada' };
+    if (existing.is_active === 1) {
+        return {
+            ok: false,
+            error: 'Primero debe desactivar la categoría antes de eliminarla de la base de datos'
+        };
+    }
+    const products = countAllProductsInCategory(db, id);
+    if (products > 0) {
+        return {
+            ok: false,
+            error: `No se puede eliminar: aún hay ${products} producto(s) asociado(s)`
+        };
+    }
+    const subs = countAllSubcategories(db, id);
+    if (subs > 0) {
+        return {
+            ok: false,
+            error: `No se puede eliminar: aún hay ${subs} subcategoría(s) asociada(s)`
+        };
+    }
+    if (!hardDeleteCategory(db, id)) {
+        return { ok: false, error: 'No se pudo eliminar la categoría' };
+    }
+    return { ok: true, data: null };
+}

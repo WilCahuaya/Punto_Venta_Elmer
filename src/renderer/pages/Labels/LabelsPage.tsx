@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react'
 import type { Product } from '@shared/types/catalog'
 import type { LabelPrintItem, LabelPrintMode, LabelPrintPayload } from '@shared/types/labels'
 import type { PrinterInfo } from '@shared/types/settings'
-import { Badge } from '../../components/ui/Badge'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { Modal } from '../../components/ui/Modal'
@@ -102,7 +101,6 @@ export function LabelsPage(): React.JSX.Element {
   const [printing, setPrinting] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [barcodeExists, setBarcodeExists] = useState<boolean | null>(null)
 
   const [a4ModalOpen, setA4ModalOpen] = useState(false)
   const [a4PresetId, setA4PresetId] = useState(A4_LABEL_PRESETS[0]?.id ?? '50x25')
@@ -240,18 +238,6 @@ export function LabelsPage(): React.JSX.Element {
     activeDims.dpi,
     currencySymbol
   ])
-
-  useEffect(() => {
-    if (!customBarcode.trim()) {
-      setBarcodeExists(null)
-      return
-    }
-    const t = setTimeout(async () => {
-      const res = await window.api.labels.checkBarcode(customBarcode.trim())
-      if (res.ok) setBarcodeExists(res.data.exists)
-    }, 300)
-    return () => clearTimeout(t)
-  }, [customBarcode])
 
   function addToQueue(item: LabelPrintItem): void {
     if (!item.barcode.trim()) {
@@ -877,15 +863,13 @@ export function LabelsPage(): React.JSX.Element {
               <Input
                 label="Código de barras"
                 value={customBarcode}
-                onChange={(e) => setCustomBarcode(e.target.value)}
-                placeholder="Código del producto"
+                readOnly
+                className="cursor-not-allowed font-mono opacity-80"
+                placeholder="Seleccione un producto"
               />
-              <div className="mt-2 flex flex-wrap gap-2">
-                {barcodeExists === true && <Badge variant="warning">Ya registrado</Badge>}
-                {barcodeExists === false && customBarcode && (
-                  <Badge variant="success">Disponible</Badge>
-                )}
-              </div>
+              <p className="mt-1 text-xs text-[rgb(var(--text-muted))]">
+                Solo se muestra para imprimir. No se puede cambiar aquí.
+              </p>
             </div>
             <MoneyInput label="Precio (opcional)" value={customPrice} onChange={setCustomPrice} />
             <Select

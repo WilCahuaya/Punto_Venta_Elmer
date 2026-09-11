@@ -36,6 +36,11 @@ export interface Product {
   costPrice: number
   priceRetail: number
   priceWholesale: number | null
+  priceDozen: number | null
+  planchaQty: number | null
+  pricePlancha: number | null
+  cajonQty: number | null
+  priceCajon: number | null
   imagePath: string | null
   isActive: boolean
   isLowStock: boolean
@@ -57,6 +62,11 @@ export interface ProductInput {
   costPrice?: number
   priceRetail: number
   priceWholesale?: number | null
+  priceDozen?: number | null
+  planchaQty?: number | null
+  pricePlancha?: number | null
+  cajonQty?: number | null
+  priceCajon?: number | null
   isActive?: boolean
   pendingImagePath?: string | null
   removeImage?: boolean

@@ -14,6 +14,7 @@ import {
 } from '../../services/image.service'
 import { normalizeScannedBarcode } from '@shared/lib/product-barcode'
 import { generateBarcodeForProduct, generateProductCode } from '../../utils/barcode'
+import { optionalPositive } from '@shared/lib/product-packs'
 import { toMoneyDb } from '../../utils/money-db'
 import {
   getProductByBarcode,
@@ -71,6 +72,32 @@ function validateProductInput(input: ProductInput, isUpdate = false): string | n
   if (!isUpdate && wholesale != null && wholesale > input.priceRetail) {
     // permitido
   }
+
+  const dozen = input.priceDozen ?? 0
+  if (dozen < 0) return 'El precio por unidad de la docena no puede ser negativo'
+
+  const planchaQty = input.planchaQty ?? 0
+  const pricePlancha = input.pricePlancha ?? 0
+  if (planchaQty < 0) return 'La cantidad de la plancha no puede ser negativa'
+  if (pricePlancha < 0) return 'El precio por unidad de la plancha no puede ser negativo'
+  if (planchaQty > 0 && pricePlancha <= 0) {
+    return 'Indique el precio por unidad de la plancha'
+  }
+  if (pricePlancha > 0 && planchaQty <= 0) {
+    return 'Indique cuántas unidades tiene una plancha'
+  }
+
+  const cajonQty = input.cajonQty ?? 0
+  const priceCajon = input.priceCajon ?? 0
+  if (cajonQty < 0) return 'La cantidad del cajón no puede ser negativa'
+  if (priceCajon < 0) return 'El precio por unidad del cajón no puede ser negativo'
+  if (cajonQty > 0 && priceCajon <= 0) {
+    return 'Indique el precio por unidad del cajón'
+  }
+  if (priceCajon > 0 && cajonQty <= 0) {
+    return 'Indique cuántas unidades tiene un cajón'
+  }
+
   return null
 }
 
@@ -94,6 +121,11 @@ function buildProductData(input: ProductInput, imagePath: string | null, product
     costPrice: toMoneyDb(input.costPrice ?? 0),
     priceRetail: toMoneyDb(input.priceRetail),
     priceWholesale: wholesale,
+    priceDozen: toMoneyDb(optionalPositive(input.priceDozen) ?? 0),
+    planchaQty: optionalPositive(input.planchaQty) ?? 0,
+    pricePlancha: toMoneyDb(optionalPositive(input.pricePlancha) ?? 0),
+    cajonQty: optionalPositive(input.cajonQty) ?? 0,
+    priceCajon: toMoneyDb(optionalPositive(input.priceCajon) ?? 0),
     imagePath,
     isActive: input.isActive === false ? 0 : 1
   }
@@ -250,6 +282,11 @@ export function updateProductService(id: number, input: ProductInput): ApiResult
     costPrice: data.costPrice,
     priceRetail: data.priceRetail,
     priceWholesale: data.priceWholesale,
+    priceDozen: data.priceDozen,
+    planchaQty: data.planchaQty,
+    pricePlancha: data.pricePlancha,
+    cajonQty: data.cajonQty,
+    priceCajon: data.priceCajon,
     imagePath: data.imagePath,
     isActive: data.isActive
   })

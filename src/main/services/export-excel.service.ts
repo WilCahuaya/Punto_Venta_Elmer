@@ -1,6 +1,7 @@
 import ExcelJS from 'exceljs'
 import type { ReportSummary } from '@shared/types/reports'
 import { formatMoney } from '@shared/lib/currency'
+import { salePaymentLabel } from '@shared/lib/payment'
 
 function money(n: number, symbol: string): string {
   return formatMoney(n, symbol)
@@ -28,6 +29,8 @@ export async function writeReportExcel(
     { label: 'Total ventas (bruto)', value: money(report.completedTotal, currencySymbol) },
     { label: 'Devoluciones', value: money(report.returnsTotal, currencySymbol) },
     { label: 'Total neto ingresos', value: money(report.netCompletedTotal, currencySymbol) },
+    { label: 'Efectivo (neto)', value: money(report.cashNetTotal, currencySymbol) },
+    { label: 'Yape (neto)', value: money(report.yapeNetTotal, currencySymbol) },
     { label: 'Ganancia', value: money(report.profit, currencySymbol) },
     { label: 'Anulaciones', value: report.voidedCount },
     { label: 'Total anulado', value: money(report.voidedTotal, currencySymbol) }
@@ -57,6 +60,7 @@ export async function writeReportExcel(
     { header: 'Subtotal', key: 'subtotal', width: 14 },
     { header: 'Descuento', key: 'discount', width: 12 },
     { header: 'Total', key: 'total', width: 14 },
+    { header: 'Pago', key: 'pago', width: 12 },
     { header: 'Estado', key: 'status', width: 12 }
   ]
   sales.getRow(1).font = { bold: true }
@@ -68,6 +72,7 @@ export async function writeReportExcel(
       subtotal: money(s.subtotal, currencySymbol),
       discount: money(s.discount, currencySymbol),
       total: money(s.total, currencySymbol),
+      pago: salePaymentLabel(s),
       status: 'Completada'
     })
   }

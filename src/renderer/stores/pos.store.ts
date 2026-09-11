@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { CartLine } from '@shared/types/sales'
-import { roundMoney } from '@shared/lib/currency'
+import { minQtyForCartLine } from '@shared/lib/product-packs'
 
 interface PosState {
   lines: CartLine[]
@@ -15,7 +15,8 @@ interface PosState {
     },
     quantity: number,
     unitPrice: number,
-    priceLabel: string
+    priceLabel: string,
+    unitsPerPack?: number
   ) => void
   addServiceLine: (
     productId: number,
@@ -32,27 +33,36 @@ interface PosState {
     productId: number
     quantity: number
     unitPrice: number
+    stockQuantity?: number
+    priceLabel?: string
     displayName?: string
     isFreeService?: boolean
   }[]
 }
 
-function lineKey(productId: number, unitPrice: number): string {
-  return `${productId}-${unitPrice}`
+function lineKey(
+  productId: number,
+  unitPrice: number,
+  unitsPerPack: number,
+  priceLabel: string
+): string {
+  return `${productId}-${unitPrice}-${unitsPerPack}-${priceLabel}`
 }
 
 export const usePosStore = create<PosState>((set, get) => ({
   lines: [],
   discount: 0,
 
-  addProduct: (product, quantity, unitPrice, priceLabel) => {
+  addProduct: (product, quantity, unitPrice, priceLabel, unitsPerPack = 1) => {
     const price = roundMoney(unitPrice)
-    const key = lineKey(product.id, price)
+    const pack = unitsPerPack > 0 ? unitsPerPack : 1
+    const maxPacks = Math.floor(product.stock / pack)
+    const key = lineKey(product.id, price, pack, priceLabel)
     set((s) => {
       const existing = s.lines.find((l) => l.key === key && !l.isService)
       if (existing) {
         const newQty = existing.quantity + quantity
-        if (newQty > product.stock) return s
+        if (newQty > maxPacks) return s
         return {
           lines: s.lines.map((l) =>
             l.key === key
@@ -65,7 +75,7 @@ export const usePosStore = create<PosState>((set, get) => ({
           )
         }
       }
-      if (quantity > product.stock) return s
+      if (quantity > maxPacks) return s
       return {
         lines: [
           ...s.lines,
@@ -77,9 +87,10 @@ export const usePosStore = create<PosState>((set, get) => ({
             quantity,
             unitPrice: price,
             costPrice: product.costPrice,
-            maxStock: product.stock,
+            maxStock: maxPacks,
             lineTotal: roundMoney(quantity * price),
             priceLabel,
+            unitsPerPack: pack,
             isService: false
           }
         ]
@@ -107,6 +118,7 @@ export const usePosStore = create<PosState>((set, get) => ({
           maxStock: Number.MAX_SAFE_INTEGER,
           lineTotal: price,
           priceLabel: 'Servicio',
+          unitsPerPack: 1,
           isService: true
         }
       ]
@@ -123,11 +135,13 @@ export const usePosStore = create<PosState>((set, get) => ({
         .map((l) => {
           if (l.key !== key) return l
           if (l.isService) return l
-          if (quantity > l.maxStock) return l
+          const min = minQtyForCartLine(l.priceLabel)
+          const nextQty = quantity < min ? min : quantity
+          if (nextQty > l.maxStock) return l
           return {
             ...l,
-            quantity,
-            lineTotal: roundMoney(quantity * l.unitPrice)
+            quantity: nextQty,
+            lineTotal: roundMoney(nextQty * l.unitPrice)
           }
         })
         .filter((l) => l.quantity > 0)
@@ -149,6 +163,8 @@ export const usePosStore = create<PosState>((set, get) => ({
       productId: l.productId,
       quantity: l.quantity,
       unitPrice: l.unitPrice,
+      stockQuantity: l.quantity * (l.unitsPerPack > 0 ? l.unitsPerPack : 1),
+      priceLabel: l.isService ? undefined : l.priceLabel,
       displayName: l.isService ? l.name : undefined,
       isFreeService: l.isService
     }))

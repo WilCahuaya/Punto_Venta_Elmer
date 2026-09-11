@@ -62,19 +62,25 @@ export function CloseCashModal({ open, summary, onClose }: CloseCashModalProps):
             <MoneyDisplay amount={summary.expectedInDrawer} />
           </div>
           <div className="flex justify-between py-1">
-            <span className="text-[rgb(var(--text-muted))]">+ Ventas cobradas</span>
+            <span className="text-[rgb(var(--text-muted))]">+ Ventas en efectivo</span>
             <MoneyDisplay amount={summary.totalSalesGross} size="sm" />
           </div>
           {summary.totalReturns > 0 && (
             <div className="flex justify-between py-1 text-amber-600">
-              <span>− Devoluciones</span>
+              <span>− Devoluciones efectivo</span>
               <MoneyDisplay amount={summary.totalReturns} size="sm" />
             </div>
           )}
           <div className="flex justify-between py-1">
-            <span className="text-[rgb(var(--text-muted))]">= Ventas netas en caja</span>
+            <span className="text-[rgb(var(--text-muted))]">= Efectivo neto en caja</span>
             <MoneyDisplay amount={summary.totalSales} size="sm" />
           </div>
+          {(summary.totalYapeGross > 0 || summary.totalYape > 0) && (
+            <div className="flex justify-between py-1 text-fuchsia-700 dark:text-fuchsia-300">
+              <span>Yape (no entra al cajón)</span>
+              <MoneyDisplay amount={summary.totalYape} size="sm" />
+            </div>
+          )}
           <div className="flex justify-between py-1">
             <span className="text-[rgb(var(--text-muted))]">Ganancia ventas</span>
             <MoneyDisplay amount={summary.salesProfit} size="sm" />

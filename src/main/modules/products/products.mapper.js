@@ -1,0 +1,37 @@
+import { fromMoneyDb } from '../../utils/money-db';
+import { optionalPositive } from '@shared/lib/product-packs';
+function mapWholesale(value) {
+    const n = fromMoneyDb(value);
+    return n > 0 ? n : null;
+}
+export function mapProductRow(row) {
+    const stock = Number(row.stock);
+    const stockMin = Number(row.stock_min);
+    return {
+        id: row.id,
+        productCode: row.product_code,
+        name: row.name,
+        barcode: row.barcode,
+        categoryId: row.category_id,
+        categoryName: row.category_name,
+        stock,
+        stockMin,
+        brand: row.brand,
+        size: row.size,
+        color: row.color,
+        description: row.description,
+        costPrice: fromMoneyDb(row.cost_price),
+        priceRetail: fromMoneyDb(row.price_retail),
+        priceWholesale: mapWholesale(row.price_wholesale),
+        priceDozen: optionalPositive(fromMoneyDb(row.price_dozen)),
+        planchaQty: optionalPositive(Number(row.plancha_qty)),
+        pricePlancha: optionalPositive(fromMoneyDb(row.price_plancha)),
+        cajonQty: optionalPositive(Number(row.cajon_qty)),
+        priceCajon: optionalPositive(fromMoneyDb(row.price_cajon)),
+        imagePath: row.image_path,
+        isActive: row.is_active === 1,
+        isLowStock: stock <= stockMin,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at
+    };
+}

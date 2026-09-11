@@ -1,3 +1,5 @@
+import type { PaymentMethod } from '../lib/payment'
+
 export interface ReportDateRange {
   dateFrom: string
   dateTo: string
@@ -12,6 +14,9 @@ export interface ReportSaleRow {
   total: number
   netTotal: number
   returnedTotal: number
+  paymentMethod: PaymentMethod
+  isCredit: boolean
+  creditTo: string | null
   status: 'completed' | 'voided'
   voidReason: string | null
   voidedAt: string | null
@@ -33,6 +38,8 @@ export interface ReportSummary {
   completedTotal: number
   returnsTotal: number
   netCompletedTotal: number
+  cashNetTotal: number
+  yapeNetTotal: number
   profit: number
   voidedCount: number
   voidedTotal: number

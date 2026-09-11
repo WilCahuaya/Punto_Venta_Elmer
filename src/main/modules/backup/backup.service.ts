@@ -3,7 +3,10 @@ import { copyFileSync, existsSync, mkdirSync, statSync, unlinkSync } from 'fs'
 import { basename, join } from 'path'
 import type { ApiResult } from '@shared/types/api'
 import type { BackupEntry, BackupStatus, BackupType } from '@shared/types/backup'
+import Database from 'better-sqlite3'
 import { closeDatabase, getDatabase } from '../../database/connection'
+import { runMigrations } from '../../database/migrate'
+import { seedDatabase } from '../../database/seed'
 import { getBackupsDir, getDbPath } from '../../utils/paths'
 import {
   deleteBackupLog,
@@ -130,6 +133,18 @@ export function getBackupStatusService(): ApiResult<BackupStatus> {
   }
 }
 
+function migrateStandaloneFile(filePath: string): void {
+  const db = new Database(filePath)
+  try {
+    db.pragma('journal_mode = DELETE')
+    db.pragma('foreign_keys = ON')
+    runMigrations(db)
+    seedDatabase(db)
+  } finally {
+    db.close()
+  }
+}
+
 export async function restoreBackupService(id: number): Promise<ApiResult<null>> {
   const db = getDatabase()
   const row = getBackupLogById(db, id)
@@ -137,22 +152,41 @@ export async function restoreBackupService(id: number): Promise<ApiResult<null>>
     return { ok: false, error: 'Backup no encontrado' }
   }
 
+  const dbPath = getDbPath()
+  const incomingPath = `${dbPath}.incoming`
+
+  try {
+    copyFileSync(row.file_path, incomingPath)
+    migrateStandaloneFile(incomingPath)
+  } catch (e) {
+    if (existsSync(incomingPath)) {
+      try {
+        unlinkSync(incomingPath)
+      } catch {
+        /* ignore */
+      }
+    }
+    return {
+      ok: false,
+      error:
+        e instanceof Error
+          ? `No se pudo aplicar el backup (esquema incompatible): ${e.message}`
+          : 'No se pudo aplicar el backup'
+    }
+  }
+
   try {
     closeDatabase()
+    copyFileSync(incomingPath, dbPath)
+    unlinkSync(incomingPath)
 
-    const dbPath = getDbPath()
-    copyFileSync(row.file_path, dbPath)
-
-    for (const suffix of ['-wal', '-shm']) {
-      const extra = dbPath + suffix
+    for (const extra of [`${dbPath}-wal`, `${dbPath}-shm`]) {
       if (existsSync(extra)) unlinkSync(extra)
     }
 
     getDatabase()
-
     app.relaunch()
     app.exit()
-
     return { ok: true, data: null }
   } catch (e) {
     getDatabase()

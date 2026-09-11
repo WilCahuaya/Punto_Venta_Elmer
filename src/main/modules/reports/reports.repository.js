@@ -1,0 +1,118 @@
+export function getReportSummary(db, range) {
+    return db
+        .prepare(`SELECT
+        (SELECT COUNT(*) FROM sales s WHERE s.status = 'completed'
+         AND date(s.created_at, 'localtime') BETWEEN date(?) AND date(?)) AS completed_count,
+        (SELECT COALESCE(SUM(total), 0) FROM sales s WHERE s.status = 'completed'
+         AND date(s.created_at, 'localtime') BETWEEN date(?) AND date(?)) AS completed_total,
+        (SELECT COALESCE(SUM(sri.line_total), 0)
+         FROM sale_return_items sri
+         INNER JOIN sale_returns sr ON sr.id = sri.return_id
+         INNER JOIN sales s ON s.id = sr.sale_id
+         WHERE s.status = 'completed'
+           AND date(s.created_at, 'localtime') BETWEEN date(?) AND date(?)) AS returns_total,
+        (SELECT COALESCE(SUM(total), 0) FROM sales s WHERE s.status = 'completed'
+         AND COALESCE(s.is_credit, 0) = 0
+         AND COALESCE(s.payment_method, 'cash') = 'cash'
+         AND date(s.created_at, 'localtime') BETWEEN date(?) AND date(?)) AS cash_total,
+        (SELECT COALESCE(SUM(sri.line_total), 0)
+         FROM sale_return_items sri
+         INNER JOIN sale_returns sr ON sr.id = sri.return_id
+         INNER JOIN sales s ON s.id = sr.sale_id
+         WHERE s.status = 'completed' AND COALESCE(s.is_credit, 0) = 0
+           AND COALESCE(s.payment_method, 'cash') = 'cash'
+           AND date(s.created_at, 'localtime') BETWEEN date(?) AND date(?)) AS cash_returns,
+        (SELECT COALESCE(SUM(total), 0) FROM sales s WHERE s.status = 'completed'
+         AND COALESCE(s.is_credit, 0) = 0
+         AND COALESCE(s.payment_method, 'cash') = 'yape'
+         AND date(s.created_at, 'localtime') BETWEEN date(?) AND date(?)) AS yape_total,
+        (SELECT COALESCE(SUM(sri.line_total), 0)
+         FROM sale_return_items sri
+         INNER JOIN sale_returns sr ON sr.id = sri.return_id
+         INNER JOIN sales s ON s.id = sr.sale_id
+         WHERE s.status = 'completed' AND COALESCE(s.is_credit, 0) = 0
+           AND COALESCE(s.payment_method, 'cash') = 'yape'
+           AND date(s.created_at, 'localtime') BETWEEN date(?) AND date(?)) AS yape_returns,
+        (SELECT COALESCE(SUM(
+           si.line_total
+           - si.unit_price * COALESCE(si.returned_quantity, 0)
+           - si.cost_price * (
+             COALESCE(si.stock_quantity, si.quantity)
+             * MAX(0, si.quantity - COALESCE(si.returned_quantity, 0))
+             / NULLIF(si.quantity, 0)
+           )
+         ), 0)
+         FROM sale_items si INNER JOIN sales s ON s.id = si.sale_id
+         WHERE s.status = 'completed' AND date(s.created_at, 'localtime') BETWEEN date(?) AND date(?)) AS profit,
+        (SELECT COUNT(*) FROM sales s WHERE s.status = 'voided'
+         AND date(s.created_at, 'localtime') BETWEEN date(?) AND date(?)) AS voided_count,
+        (SELECT COALESCE(SUM(total), 0) FROM sales s WHERE s.status = 'voided'
+         AND date(s.created_at, 'localtime') BETWEEN date(?) AND date(?)) AS voided_total`)
+        .get(range.dateFrom, range.dateTo, range.dateFrom, range.dateTo, range.dateFrom, range.dateTo, range.dateFrom, range.dateTo, range.dateFrom, range.dateTo, range.dateFrom, range.dateTo, range.dateFrom, range.dateTo, range.dateFrom, range.dateTo, range.dateFrom, range.dateTo, range.dateFrom, range.dateTo);
+}
+export function listAllSalesInRange(db, range) {
+    return db
+        .prepare(`SELECT s.id, s.ticket_number, s.created_at, s.subtotal, s.discount, s.total,
+              COALESCE(s.payment_method, 'cash') AS payment_method,
+              COALESCE(s.is_credit, 0) AS is_credit, s.credit_to,
+              s.status, s.void_reason, s.voided_at,
+              u.display_name AS voided_by_name,
+              (SELECT COALESCE(SUM(sri.line_total), 0)
+               FROM sale_return_items sri
+               INNER JOIN sale_returns sr ON sr.id = sri.return_id
+               WHERE sr.sale_id = s.id) AS returned_total,
+              (SELECT COUNT(*) FROM sale_items WHERE sale_id = s.id) AS item_count
+       FROM sales s
+       LEFT JOIN users u ON u.id = s.voided_by
+       WHERE date(s.created_at, 'localtime') BETWEEN date(?) AND date(?)
+       ORDER BY s.created_at DESC`)
+        .all(range.dateFrom, range.dateTo);
+}
+export function listSalesInRange(db, range, status) {
+    return db
+        .prepare(`SELECT s.id, s.ticket_number, s.created_at, s.subtotal, s.discount, s.total,
+              COALESCE(s.payment_method, 'cash') AS payment_method,
+              COALESCE(s.is_credit, 0) AS is_credit, s.credit_to,
+              s.status, s.void_reason, s.voided_at,
+              u.display_name AS voided_by_name,
+              (SELECT COALESCE(SUM(sri.line_total), 0)
+               FROM sale_return_items sri
+               INNER JOIN sale_returns sr ON sr.id = sri.return_id
+               WHERE sr.sale_id = s.id) AS returned_total,
+              (SELECT COUNT(*) FROM sale_items WHERE sale_id = s.id) AS item_count
+       FROM sales s
+       LEFT JOIN users u ON u.id = s.voided_by
+       WHERE s.status = ? AND date(s.created_at, 'localtime') BETWEEN date(?) AND date(?)
+       ORDER BY s.created_at DESC`)
+        .all(status, range.dateFrom, range.dateTo);
+}
+export function getTopProductsInRange(db, range, limit = 15) {
+    return db
+        .prepare(`SELECT si.product_id, si.product_name,
+              SUM(
+                COALESCE(si.stock_quantity, si.quantity)
+                * MAX(0, si.quantity - COALESCE(si.returned_quantity, 0))
+                / NULLIF(si.quantity, 0)
+              ) AS qty,
+              SUM(
+                si.line_total - si.unit_price * COALESCE(si.returned_quantity, 0)
+              ) AS revenue
+       FROM sale_items si
+       INNER JOIN sales s ON s.id = si.sale_id
+       WHERE s.status = 'completed'
+         AND date(s.created_at, 'localtime') BETWEEN date(?) AND date(?)
+       GROUP BY si.product_id, si.product_name
+       HAVING qty > 0
+       ORDER BY revenue DESC
+       LIMIT ?`)
+        .all(range.dateFrom, range.dateTo, limit);
+}
+export function sumCreditPaymentsInRange(db, range, paymentMethod) {
+    const row = db
+        .prepare(`SELECT COALESCE(SUM(CASE WHEN kind = 'refund' THEN -amount ELSE amount END), 0) AS total
+       FROM sale_credit_payments
+       WHERE payment_method = ?
+         AND date(created_at, 'localtime') BETWEEN date(?) AND date(?)`)
+        .get(paymentMethod, range.dateFrom, range.dateTo);
+    return Number(row.total);
+}

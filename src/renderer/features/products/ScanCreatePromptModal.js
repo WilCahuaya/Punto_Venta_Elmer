@@ -1,0 +1,6 @@
+import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
+import { Button } from '../../components/ui/Button';
+import { Modal } from '../../components/ui/Modal';
+export function ScanCreatePromptModal({ open, barcode, onClose, onCreate }) {
+    return (_jsx(Modal, { open: open, title: "C\u00F3digo no registrado", onClose: onClose, size: "sm", footer: _jsxs(_Fragment, { children: [_jsx(Button, { variant: "secondary", type: "button", onClick: onClose, children: "Cancelar" }), _jsx(Button, { type: "button", onClick: onCreate, children: "Crear producto" })] }), children: _jsxs("div", { className: "space-y-4 text-center", children: [_jsx("div", { className: "mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-brand/10 text-2xl", children: "\uD83D\uDCE6" }), _jsxs("div", { children: [_jsx("p", { className: "text-sm text-[rgb(var(--text-muted))]", children: "No hay ning\u00FAn producto con este c\u00F3digo de barras." }), _jsx("p", { className: "mt-3 rounded-lg border border-surface-border bg-surface/60 px-3 py-2 font-mono text-sm font-semibold", children: barcode })] }), _jsx("p", { className: "text-sm text-[rgb(var(--text-muted))]", children: "\u00BFDesea crear un producto nuevo con este c\u00F3digo? Usted completar\u00E1 el nombre, precios y dem\u00E1s datos." })] }) }));
+}

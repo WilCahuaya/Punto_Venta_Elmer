@@ -1,5 +1,6 @@
 import type { ApiResult } from '@shared/types/api'
 import type { DashboardStats, LowStockProduct, TopProduct } from '@shared/types/dashboard'
+import type { CashSessionSummary } from '@shared/types/cash'
 import { localDateIso } from '@shared/lib/local-date'
 import { getDatabase } from '../../database/connection'
 import { getCurrentCashService } from '../cash/cash.service'
@@ -41,7 +42,7 @@ export function getDashboardStatsService(): ApiResult<DashboardStats> {
   const r = reportResult.data
   const cashResult = getCurrentCashService()
 
-  let currentSession = null
+  let currentSession: CashSessionSummary | null = null
   let cashOpen = false
   if (cashResult.ok) {
     currentSession = cashResult.data

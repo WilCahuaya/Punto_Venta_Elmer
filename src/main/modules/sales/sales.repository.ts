@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3'
 import type { PriceMode } from '@shared/types/sales'
+import type { PaymentMethod } from '@shared/lib/payment'
 
 export interface SaleRow {
   id: number
@@ -10,6 +11,9 @@ export interface SaleRow {
   total: string
   amount_paid: string
   change_amount: string
+  payment_method: string
+  is_credit: number
+  credit_to: string | null
   price_mode: string
   status: string
   created_at: string
@@ -25,6 +29,7 @@ export interface SaleItemRow {
   unit_price: string
   line_total: string
   cost_price: string
+  stock_quantity: number | null
 }
 
 export function generateTicketNumber(db: Database.Database): string {
@@ -49,6 +54,9 @@ export function insertSale(
     total: string
     amountPaid: string
     changeAmount: string
+    paymentMethod: PaymentMethod
+    isCredit?: boolean
+    creditTo?: string | null
     priceMode: PriceMode
     createdBy: number
   }
@@ -57,8 +65,8 @@ export function insertSale(
     .prepare(
       `INSERT INTO sales (
         ticket_number, session_id, subtotal, discount, total,
-        amount_paid, change_amount, price_mode, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        amount_paid, change_amount, payment_method, is_credit, credit_to, price_mode, created_by
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       data.ticketNumber,
@@ -68,6 +76,9 @@ export function insertSale(
       data.total,
       data.amountPaid,
       data.changeAmount,
+      data.paymentMethod,
+      data.isCredit ? 1 : 0,
+      data.creditTo ?? null,
       data.priceMode,
       data.createdBy
     )
@@ -85,12 +96,13 @@ export function insertSaleItem(
     unitPrice: string
     lineTotal: string
     costPrice: string
+    stockQuantity: number
   }
 ): void {
   db.prepare(
     `INSERT INTO sale_items (
-      sale_id, product_id, product_name, barcode, quantity, unit_price, line_total, cost_price
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      sale_id, product_id, product_name, barcode, quantity, unit_price, line_total, cost_price, stock_quantity
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     data.saleId,
     data.productId,
@@ -99,7 +111,8 @@ export function insertSaleItem(
     data.quantity,
     data.unitPrice,
     data.lineTotal,
-    data.costPrice
+    data.costPrice,
+    data.stockQuantity
   )
 }
 
@@ -128,7 +141,9 @@ export function getSaleById(db: Database.Database, id: number): SaleRowFull | un
   return db
     .prepare(
       `SELECT s.id, s.ticket_number, s.session_id, s.subtotal, s.discount, s.total,
-              s.amount_paid, s.change_amount, s.price_mode, s.status, s.created_at,
+              s.amount_paid, s.change_amount, COALESCE(s.payment_method, 'cash') AS payment_method,
+              COALESCE(s.is_credit, 0) AS is_credit, s.credit_to,
+              s.price_mode, s.status, s.created_at,
               s.voided_at, s.void_reason, s.voided_by,
               u.display_name AS voided_by_name
        FROM sales s
@@ -163,7 +178,8 @@ export function restoreStock(
 export function getSaleItems(db: Database.Database, saleId: number): SaleItemRow[] {
   return db
     .prepare(
-      `SELECT id, sale_id, product_id, product_name, barcode, quantity, unit_price, line_total, cost_price
+      `SELECT id, sale_id, product_id, product_name, barcode, quantity, unit_price, line_total, cost_price,
+              COALESCE(stock_quantity, quantity) AS stock_quantity
        FROM sale_items WHERE sale_id = ?`
     )
     .all(saleId) as SaleItemRow[]
@@ -179,6 +195,9 @@ export interface SaleListRow {
   total: string
   amount_paid: string
   change_amount: string
+  payment_method: string
+  is_credit: number
+  credit_to: string | null
   status: string
   void_reason: string | null
   voided_at: string | null
@@ -191,7 +210,9 @@ export function listSalesForSession(db: Database.Database, sessionId: number): S
   return db
     .prepare(
       `SELECT s.id, s.ticket_number, s.session_id, s.created_at, s.subtotal, s.discount, s.total,
-              s.amount_paid, s.change_amount, s.status, s.void_reason, s.voided_at,
+              s.amount_paid, s.change_amount, COALESCE(s.payment_method, 'cash') AS payment_method,
+              COALESCE(s.is_credit, 0) AS is_credit, s.credit_to,
+              s.status, s.void_reason, s.voided_at,
               u.display_name AS voided_by_name,
               (SELECT COALESCE(SUM(sri.line_total), 0)
                FROM sale_return_items sri

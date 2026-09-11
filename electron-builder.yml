@@ -13,13 +13,12 @@ files:
   - '!electron.vite.config.*'
   - '!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
 asarUnpack:
+  - '**/*.node'
+  - '**/better-sqlite3/**'
   - '**/node_modules/pdfmake/fonts/**'
 extraResources:
   - from: database
     to: database
-asarUnpack:
-  - '**/*.node'
-  - '**/better-sqlite3/**'
 win:
   icon: resources/icon.ico
   signAndEditExecutable: false

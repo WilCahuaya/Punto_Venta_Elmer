@@ -7,6 +7,7 @@ import { MoneyDisplay } from '../../components/ui/MoneyDisplay'
 import { Select } from '../../components/ui/Select'
 import { useLogoImage } from '../../hooks/useLogoImage'
 import { useSettingsStore } from '../../stores/settings.store'
+import { paymentMethodLabel } from '@shared/lib/payment'
 
 interface PrintTicketPromptModalProps {
   open: boolean
@@ -231,12 +232,32 @@ export function PrintTicketPromptModal({
               <TicketRow label="TOTAL" strong>
                 <MoneyDisplay amount={detail.total} size="sm" />
               </TicketRow>
-              <TicketRow label="Pagó">
-                <MoneyDisplay amount={detail.amountPaid} size="sm" />
-              </TicketRow>
-              <TicketRow label="Vuelto">
-                <MoneyDisplay amount={detail.changeAmount} size="sm" />
-              </TicketRow>
+              {detail.isCredit ? (
+                <>
+                  <TicketRow label="Pago">FIADO</TicketRow>
+                  <p className="text-[11px] leading-snug">A: {detail.creditTo || '—'}</p>
+                  <TicketRow label="Pagó">
+                    <MoneyDisplay amount={detail.paidTotal} size="sm" />
+                  </TicketRow>
+                  <TicketRow label="Saldo" strong>
+                    <MoneyDisplay amount={detail.remaining} size="sm" />
+                  </TicketRow>
+                </>
+              ) : (
+                <>
+                  <TicketRow label="Pago">{paymentMethodLabel(detail.paymentMethod)}</TicketRow>
+                  {detail.paymentMethod === 'cash' && (
+                    <>
+                      <TicketRow label="Pagó">
+                        <MoneyDisplay amount={detail.amountPaid} size="sm" />
+                      </TicketRow>
+                      <TicketRow label="Vuelto">
+                        <MoneyDisplay amount={detail.changeAmount} size="sm" />
+                      </TicketRow>
+                    </>
+                  )}
+                </>
+              )}
               <hr className="my-2 border-neutral-400" />
               <p className="text-center">¡Gracias por su compra!</p>
               {ticketSlogan.trim() ? (

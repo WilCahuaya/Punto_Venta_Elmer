@@ -1,10 +1,13 @@
 import { ipcMain } from 'electron'
 import { IPC_CHANNELS } from '@shared/constants/ipc'
-import type { CreateSaleInput } from '@shared/types/sales'
+import type { AddCreditPaymentInput, CreateSaleInput, CreditListFilters } from '@shared/types/sales'
 import { printSaleTicket } from '../../services/printer.service'
 import {
+  addCreditPaymentService,
   createSaleService,
   getSaleDetailService,
+  listCreditPaymentsForSessionService,
+  listCreditSalesService,
   listSalesForSessionService,
   partialReturnService,
   voidSaleService
@@ -38,5 +41,14 @@ export function registerSalesIpc(): void {
   )
   ipcMain.handle(IPC_CHANNELS.SALES_VOID, (_e, input: VoidSaleInput) =>
     voidSaleService(input.saleId, input.reason)
+  )
+  ipcMain.handle(IPC_CHANNELS.SALES_CREDIT_LIST, (_e, filters?: CreditListFilters) =>
+    listCreditSalesService(filters ?? {})
+  )
+  ipcMain.handle(IPC_CHANNELS.SALES_CREDIT_PAY, (_e, input: AddCreditPaymentInput) =>
+    addCreditPaymentService(input)
+  )
+  ipcMain.handle(IPC_CHANNELS.SALES_CREDIT_PAYMENTS_BY_SESSION, (_e, sessionId: number) =>
+    listCreditPaymentsForSessionService(sessionId)
   )
 }

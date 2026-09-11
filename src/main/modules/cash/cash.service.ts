@@ -12,6 +12,7 @@ import { roundMoney } from '@shared/lib/currency'
 import { getDatabase } from '../../database/connection'
 import { fromMoneyDb, toMoneyDb } from '../../utils/money-db'
 import { getCurrentUserId } from '../auth/auth.service'
+import { sumCreditPaymentsInSession } from '../sales/sales-credit.repository'
 import {
   closeSession,
   getOpenSession,
@@ -63,12 +64,17 @@ function buildSummary(row: CashSessionRow): CashSessionSummary {
   const opening = fromMoneyDb(row.opening_amount)
   const totalIncome = sumMovements(db, row.id, 'income')
   const totalExpense = sumMovements(db, row.id, 'expense')
-  const totalSalesGross = sumSalesGross(db, row.id)
-  const totalReturns = sumReturnsInSession(db, row.id)
-  const totalSalesNet = sumSales(db, row.id)
+  const totalSalesGross = sumSalesGross(db, row.id, 'cash')
+  const totalYapeGross = sumSalesGross(db, row.id, 'yape')
+  const totalReturns = sumReturnsInSession(db, row.id, 'cash')
+  const totalYapeReturns = sumReturnsInSession(db, row.id, 'yape')
+  const totalSalesNet = sumSales(db, row.id, 'cash')
+  const totalYape = sumSales(db, row.id, 'yape')
+  const creditCashCollected = sumCreditPaymentsInSession(db, row.id, 'cash')
+  const creditYapeCollected = sumCreditPaymentsInSession(db, row.id, 'yape')
   const salesProfit = sumSalesProfit(db, row.id)
   const expectedInDrawer = roundMoney(
-    opening + totalIncome - totalExpense + totalSalesNet
+    opening + totalIncome - totalExpense + totalSalesNet + creditCashCollected
   )
 
   return {
@@ -76,8 +82,13 @@ function buildSummary(row: CashSessionRow): CashSessionSummary {
     totalIncome: roundMoney(totalIncome),
     totalExpense: roundMoney(totalExpense),
     totalSalesGross: roundMoney(totalSalesGross),
+    totalYapeGross: roundMoney(totalYapeGross),
     totalReturns: roundMoney(totalReturns),
+    totalYapeReturns: roundMoney(totalYapeReturns),
     totalSales: roundMoney(totalSalesNet),
+    totalYape: roundMoney(totalYape),
+    creditCashCollected: roundMoney(creditCashCollected),
+    creditYapeCollected: roundMoney(creditYapeCollected),
     salesProfit: roundMoney(salesProfit),
     expectedInDrawer
   }

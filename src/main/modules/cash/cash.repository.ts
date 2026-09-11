@@ -115,31 +115,63 @@ export function sumMovements(
   return Number(row.total)
 }
 
-export function sumSalesGross(db: Database.Database, sessionId: number): number {
+export function sumSalesGross(
+  db: Database.Database,
+  sessionId: number,
+  paymentMethod?: 'cash' | 'yape'
+): number {
+  const methodClause =
+    paymentMethod === 'yape'
+      ? `AND COALESCE(payment_method, 'cash') = 'yape'`
+      : paymentMethod === 'cash'
+        ? `AND COALESCE(payment_method, 'cash') = 'cash'`
+        : ''
   const row = db
     .prepare(
       `SELECT COALESCE(SUM(total), 0) AS total FROM sales
-       WHERE session_id = ? AND status = 'completed'`
+       WHERE session_id = ? AND status = 'completed'
+         AND COALESCE(is_credit, 0) = 0 ${methodClause}`
     )
     .get(sessionId) as { total: string }
   return Number(row.total)
 }
 
-export function sumReturnsInSession(db: Database.Database, sessionId: number): number {
+export function sumReturnsInSession(
+  db: Database.Database,
+  sessionId: number,
+  paymentMethod?: 'cash' | 'yape'
+): number {
+  const methodClause =
+    paymentMethod === 'yape'
+      ? `AND COALESCE(s.payment_method, 'cash') = 'yape'`
+      : paymentMethod === 'cash'
+        ? `AND COALESCE(s.payment_method, 'cash') = 'cash'`
+        : ''
   const row = db
     .prepare(
       `SELECT COALESCE(SUM(sri.line_total), 0) AS total
        FROM sale_return_items sri
        INNER JOIN sale_returns sr ON sr.id = sri.return_id
        INNER JOIN sales s ON s.id = sr.sale_id
-       WHERE s.session_id = ? AND s.status = 'completed'`
+       WHERE s.session_id = ? AND s.status = 'completed'
+         AND COALESCE(s.is_credit, 0) = 0 ${methodClause}`
     )
     .get(sessionId) as { total: string }
   return Number(row.total)
 }
 
-/** Ventas netas del turno (bruto − devoluciones), coherente con Reportes y efectivo esperado. */
-export function sumSales(db: Database.Database, sessionId: number): number {
+/** Ventas netas del turno (bruto − devoluciones). Filtrar por método para el efectivo esperado. */
+export function sumSales(
+  db: Database.Database,
+  sessionId: number,
+  paymentMethod?: 'cash' | 'yape'
+): number {
+  const methodClause =
+    paymentMethod === 'yape'
+      ? `AND COALESCE(s.payment_method, 'cash') = 'yape'`
+      : paymentMethod === 'cash'
+        ? `AND COALESCE(s.payment_method, 'cash') = 'cash'`
+        : ''
   const row = db
     .prepare(
       `SELECT COALESCE(SUM(
@@ -151,7 +183,8 @@ export function sumSales(db: Database.Database, sessionId: number): number {
          )
        ), 0) AS total
        FROM sales s
-       WHERE s.session_id = ? AND s.status = 'completed'`
+       WHERE s.session_id = ? AND s.status = 'completed'
+         AND COALESCE(s.is_credit, 0) = 0 ${methodClause}`
     )
     .get(sessionId) as { total: string }
   return Number(row.total)
@@ -163,7 +196,11 @@ export function sumSalesProfit(db: Database.Database, sessionId: number): number
       `SELECT COALESCE(SUM(
          si.line_total
          - si.unit_price * COALESCE(si.returned_quantity, 0)
-         - si.cost_price * MAX(0, si.quantity - COALESCE(si.returned_quantity, 0))
+         - si.cost_price * (
+           COALESCE(si.stock_quantity, si.quantity)
+           * MAX(0, si.quantity - COALESCE(si.returned_quantity, 0))
+           / NULLIF(si.quantity, 0)
+         )
        ), 0) AS profit
        FROM sale_items si
        INNER JOIN sales s ON s.id = si.sale_id

@@ -29,7 +29,10 @@ const navSections: NavSection[] = [
     id: 'finanzas',
     label: 'Finanzas',
     collapsible: true,
-    items: [{ to: '/cash', label: 'Caja' }]
+    items: [
+      { to: '/cash', label: 'Caja' },
+      { to: '/credits', label: 'Fiados' }
+    ]
   },
   {
     id: 'catalogo',

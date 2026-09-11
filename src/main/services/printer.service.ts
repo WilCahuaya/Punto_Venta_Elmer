@@ -2,8 +2,10 @@ import { existsSync } from 'fs'
 import { getDatabase } from '../database/connection'
 import { resolveImagePath } from '../utils/paths'
 import { fromMoneyDb } from '../utils/money-db'
+import { getReturnedTotalForSale } from '../modules/sales/sales-returns.repository'
 import { getSaleById, getSaleItems } from '../modules/sales/sales.repository'
 import { formatMoney } from '@shared/lib/currency'
+import { normalizePaymentMethod, paymentMethodLabel } from '@shared/lib/payment'
 import {
   parseThermalPaperSize,
   type PosPrintLine,
@@ -227,17 +229,59 @@ export async function printSaleTicket(
         type: 'text',
         value: padRow('TOTAL', fmt(sale.total), width),
         style: { fontWeight: '700', fontSize: '13px' }
-      },
-      {
+      }
+    )
+
+    const isCredit = Number(sale.is_credit) === 1
+    if (isCredit) {
+      const returnedTotal = fromMoneyDb(getReturnedTotalForSale(db, saleId))
+      const netTotal = Math.max(0, fromMoneyDb(sale.total) - returnedTotal)
+      const paid = fromMoneyDb(sale.amount_paid)
+      const remaining = Math.max(0, netTotal - paid)
+      data.push(
+        {
+          type: 'text',
+          value: padRow('Pago', 'FIADO', width),
+          style: { fontWeight: '700', fontSize: '11px' }
+        },
+        {
+          type: 'text',
+          value: `A: ${sale.credit_to || '—'}`,
+          style: { fontSize: '11px' }
+        },
+        {
+          type: 'text',
+          value: padRow('Pagó', fmt(sale.amount_paid), width),
+          style: { fontSize: '11px' }
+        },
+        {
+          type: 'text',
+          value: padRow('Saldo', formatMoney(remaining, currencySymbol), width),
+          style: { fontWeight: '700', fontSize: '12px' }
+        }
+      )
+    } else {
+      data.push({
         type: 'text',
-        value: padRow('Pagó', fmt(sale.amount_paid), width),
+        value: padRow('Pago', paymentMethodLabel(sale.payment_method), width),
         style: { fontSize: '11px' }
-      },
-      {
-        type: 'text',
-        value: padRow('Vuelto', fmt(sale.change_amount), width),
-        style: { fontSize: '11px' }
-      },
+      })
+      if (normalizePaymentMethod(sale.payment_method) === 'cash') {
+        data.push(
+          {
+            type: 'text',
+            value: padRow('Pagó', fmt(sale.amount_paid), width),
+            style: { fontSize: '11px' }
+          },
+          {
+            type: 'text',
+            value: padRow('Vuelto', fmt(sale.change_amount), width),
+            style: { fontSize: '11px' }
+          }
+        )
+      }
+    }
+    data.push(
       separatorLine(ctx.paper),
       centerText('Gracias por su compra!', { fontSize: '11px' })
     )

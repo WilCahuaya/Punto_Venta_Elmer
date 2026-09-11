@@ -20,12 +20,22 @@ export interface CashSessionSummary extends CashSession {
   totalExpense: number
   /** Ventas completadas cobradas en efectivo (bruto del ticket). */
   totalSalesGross: number
-  /** Dinero devuelto al cliente en este turno (sale de la caja). */
+  /** Ventas completadas cobradas por Yape (bruto). */
+  totalYapeGross: number
+  /** Devoluciones de ventas en efectivo (sale del cajón). */
   totalReturns: number
-  /** Ventas netas = bruto − devoluciones; base del efectivo esperado. */
+  /** Devoluciones de ventas Yape (no sale del cajón). */
+  totalYapeReturns: number
+  /** Ventas netas en efectivo = bruto − devoluciones; base del efectivo esperado. */
   totalSales: number
+  /** Ventas netas por Yape. */
+  totalYape: number
+  /** Abonos/adelantos de fiados en efectivo de este turno (reembolsos restan). */
+  creditCashCollected: number
+  /** Abonos/adelantos de fiados por Yape de este turno (no entran al cajón). */
+  creditYapeCollected: number
   salesProfit: number
-  /** Apertura + ingresos − egresos + ventas netas. */
+  /** Apertura + ingresos − egresos + ventas netas en efectivo + abonos fiado efectivo. */
   expectedInDrawer: number
 }
 

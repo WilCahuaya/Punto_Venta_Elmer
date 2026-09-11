@@ -1,4 +1,5 @@
 import { fromMoneyDb } from '../../utils/money-db'
+import { optionalPositive } from '@shared/lib/product-packs'
 import type { Product } from '@shared/types/catalog'
 import type { ProductRow } from './products.repository'
 
@@ -26,6 +27,11 @@ export function mapProductRow(row: ProductRow): Product {
     costPrice: fromMoneyDb(row.cost_price),
     priceRetail: fromMoneyDb(row.price_retail),
     priceWholesale: mapWholesale(row.price_wholesale),
+    priceDozen: optionalPositive(fromMoneyDb(row.price_dozen)),
+    planchaQty: optionalPositive(Number(row.plancha_qty)),
+    pricePlancha: optionalPositive(fromMoneyDb(row.price_plancha)),
+    cajonQty: optionalPositive(Number(row.cajon_qty)),
+    priceCajon: optionalPositive(fromMoneyDb(row.price_cajon)),
     imagePath: row.image_path,
     isActive: row.is_active === 1,
     isLowStock: stock <= stockMin,

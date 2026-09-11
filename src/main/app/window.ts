@@ -8,7 +8,7 @@ export function createMainWindow(): BrowserWindow {
     height: 800,
     minWidth: 1024,
     minHeight: 640,
-    show: false,
+    show: true,
     autoHideMenuBar: true,
     title: 'Punto de Venta',
     icon: join(app.getAppPath(), 'resources', 'icon.ico'),
@@ -20,7 +20,17 @@ export function createMainWindow(): BrowserWindow {
     }
   })
 
-  win.on('ready-to-show', () => win.show())
+  const showWindow = (): void => {
+    if (!win.isDestroyed() && !win.isVisible()) win.show()
+  }
+
+  win.on('ready-to-show', showWindow)
+  win.webContents.on('did-finish-load', showWindow)
+  win.webContents.on('did-fail-load', (_event, code, desc) => {
+    showWindow()
+    console.error('No se pudo cargar la interfaz:', code, desc)
+  })
+  setTimeout(showWindow, 2500)
 
   win.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
@@ -28,9 +38,9 @@ export function createMainWindow(): BrowserWindow {
   })
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    win.loadURL(process.env['ELECTRON_RENDERER_URL'])
+    void win.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
-    win.loadFile(join(__dirname, '../renderer/index.html'))
+    void win.loadFile(join(__dirname, '../renderer/index.html'))
   }
 
   return win

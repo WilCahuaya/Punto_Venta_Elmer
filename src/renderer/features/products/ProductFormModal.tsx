@@ -315,13 +315,30 @@ export function ProductFormModal({
               required={isCreate}
               error={fieldErrors.priceWholesale}
             />
-            <NumberInput
-              label="Stock inicial"
-              min={0}
-              emptyValue={0}
-              value={form.stock ?? 0}
-              onChange={(v) => setForm({ ...form, stock: v })}
-            />
+            <div>
+              {isCreate ? (
+                <NumberInput
+                  label="Stock inicial"
+                  min={0}
+                  emptyValue={0}
+                  value={form.stock ?? 0}
+                  onChange={(v) => setForm({ ...form, stock: v })}
+                />
+              ) : (
+                <Input
+                  label="Stock actual"
+                  type="number"
+                  value={String(form.stock ?? 0)}
+                  readOnly
+                  className="cursor-not-allowed opacity-80"
+                />
+              )}
+              <p className="mt-1 text-xs text-[rgb(var(--text-muted))]">
+                {isCreate
+                  ? 'Después de guardar, el stock solo baja al vender.'
+                  : 'El stock solo baja al vender. Para agregar unidades use Ajustar stock.'}
+              </p>
+            </div>
           </div>
           <NumberInput
             label="Stock mínimo (alerta)"

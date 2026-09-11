@@ -65,6 +65,9 @@ function validateProductInput(input: ProductInput, isUpdate = false): string | n
   if ((input.stock ?? 0) < 0 || (input.stockMin ?? 0) < 0) {
     return 'El stock no puede ser negativo'
   }
+  if (!isUpdate && (input.stockMin ?? 0) > (input.stock ?? 0)) {
+    return 'El stock mínimo no puede ser mayor que el stock actual'
+  }
   if (!isUpdate && wholesale != null && wholesale > input.priceRetail) {
     // permitido
   }
@@ -220,6 +223,11 @@ export function updateProductService(id: number, input: ProductInput): ApiResult
     if (!cat) return { ok: false, error: 'Categoría no válida' }
   }
 
+  const stockMin = input.stockMin ?? 0
+  if (stockMin > existing.stock) {
+    return { ok: false, error: 'El stock mínimo no puede ser mayor que el stock actual' }
+  }
+
   let imagePath = existing.image_path
   try {
     imagePath = handleImage(id, existing.image_path, input.pendingImagePath, input.removeImage)
@@ -229,7 +237,22 @@ export function updateProductService(id: number, input: ProductInput): ApiResult
 
   const data = buildProductData(input, imagePath, productCode)
   data.barcode = barcode ?? existing.barcode
-  updateProduct(db, id, data)
+  updateProduct(db, id, {
+    productCode: data.productCode,
+    name: data.name,
+    barcode: data.barcode,
+    categoryId: data.categoryId,
+    stockMin: data.stockMin,
+    brand: data.brand,
+    size: data.size,
+    color: data.color,
+    description: data.description,
+    costPrice: data.costPrice,
+    priceRetail: data.priceRetail,
+    priceWholesale: data.priceWholesale,
+    imagePath: data.imagePath,
+    isActive: data.isActive
+  })
 
   return getProductService(id)
 }

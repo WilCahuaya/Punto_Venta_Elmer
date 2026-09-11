@@ -17,6 +17,17 @@ export const LABEL_BARCODE_OPTIONS: BarcodeOptions = {
   margin: 0
 }
 
+/** Opciones compactas para etiquetas pequeñas (p. ej. 25 × 12 mm en A4). */
+export function labelBarcodeOptionsForHeight(heightMm: number): BarcodeOptions {
+  if (heightMm <= 14) {
+    return { width: 1, height: 28, fontSize: 5, displayValue: false, margin: 0 }
+  }
+  if (heightMm <= 22) {
+    return { width: 1, height: 40, fontSize: 6, displayValue: false, margin: 0 }
+  }
+  return LABEL_BARCODE_OPTIONS
+}
+
 /** Genera PNG en base64 (sin prefijo data:) para impresión. */
 export async function barcodeToBase64(
   code: string,
@@ -55,6 +66,35 @@ export async function barcodeToBase64(
   } finally {
     URL.revokeObjectURL(url)
   }
+}
+
+/** Igual que barcodeToBase64 pero no lanza: un código inválido no tumba el lote. */
+export async function barcodeToBase64Safe(
+  code: string,
+  options: BarcodeOptions = {}
+): Promise<string | null> {
+  try {
+    return await barcodeToBase64(code, options)
+  } catch {
+    return null
+  }
+}
+
+export async function barcodesToBase64Map(
+  codes: string[],
+  options: BarcodeOptions = {}
+): Promise<{ images: Record<string, string>; failed: string[] }> {
+  const images: Record<string, string> = {}
+  const failed: string[] = []
+  const unique = [...new Set(codes.map((c) => c.trim()).filter(Boolean))]
+
+  for (const code of unique) {
+    const png = await barcodeToBase64Safe(code, options)
+    if (png) images[code] = png
+    else failed.push(code)
+  }
+
+  return { images, failed }
 }
 
 /** Renderiza código de barras en un elemento SVG del DOM (vista previa). */

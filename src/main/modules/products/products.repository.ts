@@ -186,7 +186,6 @@ export function updateProduct(
     name: string
     barcode: string | null
     categoryId: number | null
-    stock: number
     stockMin: number
     brand: string | null
     size: string | null
@@ -201,7 +200,7 @@ export function updateProduct(
 ): void {
   db.prepare(
     `UPDATE products SET
-      product_code = ?, name = ?, barcode = ?, category_id = ?, stock = ?, stock_min = ?,
+      product_code = ?, name = ?, barcode = ?, category_id = ?, stock_min = ?,
       brand = ?, size = ?, color = ?, description = ?,
       cost_price = ?, price_retail = ?, price_wholesale = ?,
       image_path = ?, is_active = ?, updated_at = datetime('now')
@@ -211,7 +210,6 @@ export function updateProduct(
     data.name,
     data.barcode,
     data.categoryId,
-    data.stock,
     data.stockMin,
     data.brand,
     data.size,

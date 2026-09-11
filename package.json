@@ -9,10 +9,11 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "build:icon": "node scripts/build-icon.mjs",
-    "dist": "npm run build:icon && npm run build && electron-builder --win",
-    "pack": "npm run build && electron-builder --win --dir",
+    "rebuild:sqlite": "node scripts/rebuild-sqlite.mjs",
+    "dist": "npm run rebuild:sqlite && npm run build:icon && npm run build && electron-builder --win",
+    "pack": "npm run rebuild:sqlite && npm run build && electron-builder --win --dir",
     "preview": "electron-vite preview",
-    "postinstall": "electron-builder install-app-deps"
+    "postinstall": "electron-builder install-app-deps && npm run rebuild:sqlite"
   },
   "dependencies": {
     "@electron-toolkit/utils": "^4.0.0",

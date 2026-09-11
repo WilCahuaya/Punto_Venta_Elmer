@@ -17,6 +17,9 @@ asarUnpack:
 extraResources:
   - from: database
     to: database
+asarUnpack:
+  - '**/*.node'
+  - '**/better-sqlite3/**'
 win:
   icon: resources/icon.ico
   signAndEditExecutable: false

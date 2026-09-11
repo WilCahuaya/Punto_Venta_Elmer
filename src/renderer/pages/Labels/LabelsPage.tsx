@@ -16,6 +16,7 @@ import { buildSingleLabelDocumentHtml } from '@shared/lib/label-html'
 import {
   A4_LABEL_PRESETS,
   a4SheetsNeeded,
+  a4SheetsNeededMixed,
   computeA4LabelGrid,
   isCompactLabel,
   resolveLabelDimensions
@@ -56,6 +57,18 @@ function resolvePrintProductName(p: Product, consolidated: boolean): string {
   return consolidated ? formatProductLabelSummary(p) : p.name
 }
 
+function sizeFromPreset(
+  presetId: string,
+  current: { presetId: string; widthMm: number; heightMm: number }
+): { presetId: string; widthMm: number; heightMm: number } {
+  const preset = A4_LABEL_PRESETS.find((p) => p.id === presetId)
+  if (!preset) return current
+  if (preset.id === 'custom') {
+    return { presetId: 'custom', widthMm: current.widthMm, heightMm: current.heightMm }
+  }
+  return { presetId: preset.id, widthMm: preset.widthMm, heightMm: preset.heightMm }
+}
+
 export function LabelsPage(): React.JSX.Element {
   const currencySymbol = useSettingsStore((s) => s.currencySymbol)
   const labelPreset = useSettingsStore((s) => s.labelPreset)
@@ -63,15 +76,11 @@ export function LabelsPage(): React.JSX.Element {
   const labelHeightMm = useSettingsStore((s) => s.labelHeightMm)
   const labelDpi = useSettingsStore((s) => s.labelDpi)
   const printerLabels = useSettingsStore((s) => s.printerLabels)
-  const rollDims = resolveLabelDimensions({
-    presetId: labelPreset,
-    widthMm: labelWidthMm,
-    heightMm: labelHeightMm,
-    dpi: labelDpi
-  })
 
   const queue = useLabelQueueStore((s) => s.queue)
   const addQueueItem = useLabelQueueStore((s) => s.addItem)
+  const updateQueueItem = useLabelQueueStore((s) => s.updateItem)
+  const applySizeToAllQueue = useLabelQueueStore((s) => s.applySizeToAll)
   const removeQueueItem = useLabelQueueStore((s) => s.removeItem)
   const clearQueue = useLabelQueueStore((s) => s.clear)
 
@@ -85,6 +94,9 @@ export function LabelsPage(): React.JSX.Element {
   const [customBarcode, setCustomBarcode] = useState('')
   const [customPrice, setCustomPrice] = useState(0)
   const [copies, setCopies] = useState(1)
+  const [formPresetId, setFormPresetId] = useState(labelPreset)
+  const [formWidthMm, setFormWidthMm] = useState(labelWidthMm)
+  const [formHeightMm, setFormHeightMm] = useState(labelHeightMm)
   const [useConsolidatedName, setUseConsolidatedName] = useState(false)
 
   const [printing, setPrinting] = useState(false)
@@ -108,6 +120,16 @@ export function LabelsPage(): React.JSX.Element {
 
   const previewCode = customBarcode.trim() || selectedProduct?.barcode || ''
 
+  const formDims = useMemo(
+    () =>
+      resolveLabelDimensions({
+        presetId: formPresetId,
+        widthMm: formWidthMm,
+        heightMm: formHeightMm,
+        dpi: printMode === 'a4' ? 300 : labelDpi
+      }),
+    [formHeightMm, formPresetId, formWidthMm, labelDpi, printMode]
+  )
   const a4Dims = useMemo(
     () =>
       resolveLabelDimensions({
@@ -118,12 +140,8 @@ export function LabelsPage(): React.JSX.Element {
       }),
     [a4PresetId, a4HeightMm, a4WidthMm]
   )
-  const a4Grid = useMemo(
-    () => computeA4LabelGrid(a4Dims.widthMm, a4Dims.heightMm),
-    [a4Dims.heightMm, a4Dims.widthMm]
-  )
 
-  const activeDims = printMode === 'a4' ? a4Dims : rollDims
+  const activeDims = formDims
   const compactPreview = isCompactLabel(activeDims.widthMm, activeDims.heightMm)
   const previewMaxWidthPx = compactPreview ? 220 : 280
   const previewWidthPx = previewMaxWidthPx
@@ -255,8 +273,50 @@ export function LabelsPage(): React.JSX.Element {
       name: customName.trim() || selectedProduct?.name || barcode,
       barcode,
       price: customPrice > 0 ? customPrice : null,
-      copies
+      copies,
+      presetId: formPresetId,
+      widthMm: formDims.widthMm,
+      heightMm: formDims.heightMm
     })
+  }
+
+  function handleFormPresetChange(presetId: string): void {
+    const next = sizeFromPreset(presetId, {
+      presetId: formPresetId,
+      widthMm: formWidthMm,
+      heightMm: formHeightMm
+    })
+    setFormPresetId(next.presetId)
+    setFormWidthMm(next.widthMm)
+    setFormHeightMm(next.heightMm)
+  }
+
+  function handleQueuePresetChange(
+    id: string,
+    presetId: string,
+    item: { presetId?: string; widthMm?: number; heightMm?: number }
+  ): void {
+    const next = sizeFromPreset(presetId, {
+      presetId: item.presetId ?? formPresetId,
+      widthMm: item.widthMm ?? formWidthMm,
+      heightMm: item.heightMm ?? formHeightMm
+    })
+    updateQueueItem(id, next)
+  }
+
+  function handleApplySizeToAll(presetId: string): void {
+    const next = sizeFromPreset(presetId, {
+      presetId: formPresetId,
+      widthMm: formWidthMm,
+      heightMm: formHeightMm
+    })
+    setFormPresetId(next.presetId)
+    setFormWidthMm(next.widthMm)
+    setFormHeightMm(next.heightMm)
+    setA4PresetId(next.presetId)
+    setA4WidthMm(next.widthMm)
+    setA4HeightMm(next.heightMm)
+    applySizeToAllQueue(next)
   }
 
   async function loadPrintersForA4(): Promise<void> {
@@ -297,26 +357,46 @@ export function LabelsPage(): React.JSX.Element {
   }
 
   function buildPrintPayload(barcodeImages: Record<string, string>): LabelPrintPayload {
-    const items = queue.map(({ name, barcode, price, copies: c }) => ({
-      name,
-      barcode,
-      price,
-      copies: c
-    }))
+    const dpi = printMode === 'a4' ? 300 : labelDpi
+    const items = queue.map(({ name, barcode, price, copies: c, presetId, widthMm, heightMm }) => {
+      const dims = resolveLabelDimensions({
+        presetId: presetId ?? formPresetId,
+        widthMm: widthMm ?? formWidthMm,
+        heightMm: heightMm ?? formHeightMm,
+        dpi
+      })
+      return {
+        name,
+        barcode,
+        price,
+        copies: c,
+        presetId: presetId ?? formPresetId,
+        widthMm: dims.widthMm,
+        heightMm: dims.heightMm
+      }
+    })
+    const first = items[0]
     if (printMode === 'a4') {
       return {
         mode: 'a4',
         items,
         barcodeImages,
         a4: {
-          presetId: a4PresetId,
-          widthMm: a4Dims.widthMm,
-          heightMm: a4Dims.heightMm,
+          presetId: first?.presetId ?? a4PresetId,
+          widthMm: first?.widthMm ?? a4Dims.widthMm,
+          heightMm: first?.heightMm ?? a4Dims.heightMm,
           printerName: a4Printer
         }
       }
     }
-    return { mode: 'roll', items, barcodeImages }
+    return {
+      mode: 'roll',
+      items,
+      barcodeImages,
+      size: first
+        ? { presetId: first.presetId ?? formPresetId, widthMm: first.widthMm, heightMm: first.heightMm }
+        : { presetId: formPresetId, widthMm: formDims.widthMm, heightMm: formDims.heightMm }
+    }
   }
 
   function closePdfPreview(): void {
@@ -380,7 +460,9 @@ export function LabelsPage(): React.JSX.Element {
         return
       }
       setMessage(
-        `${result.data.printed} etiqueta(s) en rollo (${rollDims.widthMm}×${rollDims.heightMm} mm)`
+        mixedSizes
+          ? `${result.data.printed} etiqueta(s) en rollo (tamaños mixtos)`
+          : `${result.data.printed} etiqueta(s) en rollo (${queueA4Dims.widthMm}×${queueA4Dims.heightMm} mm)`
       )
       clearQueue()
       closePdfPreview()
@@ -406,9 +488,11 @@ export function LabelsPage(): React.JSX.Element {
         setError(result.error)
         return
       }
-      const sheets = result.data.sheets ?? a4SheetsNeeded(result.data.printed, a4Grid.perSheet)
+      const sheets = result.data.sheets ?? a4SheetsNeeded(result.data.printed, queueA4Grid.perSheet)
       setMessage(
-        `${result.data.printed} etiqueta(s) en ${sheets} hoja(s) A4 (${a4Dims.widthMm}×${a4Dims.heightMm} mm)`
+        mixedSizes
+          ? `${result.data.printed} etiqueta(s) en ${sheets} hoja(s) A4 (tamaños mixtos)`
+          : `${result.data.printed} etiqueta(s) en ${sheets} hoja(s) A4 (${queueA4Dims.widthMm}×${queueA4Dims.heightMm} mm)`
       )
       clearQueue()
       setA4ModalOpen(false)
@@ -435,7 +519,59 @@ export function LabelsPage(): React.JSX.Element {
   }
 
   const totalLabels = queue.reduce((s, i) => s + i.copies, 0)
-  const a4SheetsPreview = a4SheetsNeeded(totalLabels, a4Grid.perSheet)
+  const printDpi = printMode === 'a4' ? 300 : labelDpi
+  const queueSizeKeys = useMemo(() => {
+    return new Set(
+      queue.map((item) => {
+        const dims = resolveLabelDimensions({
+          presetId: item.presetId ?? formPresetId,
+          widthMm: item.widthMm ?? formWidthMm,
+          heightMm: item.heightMm ?? formHeightMm,
+          dpi: printDpi
+        })
+        return `${dims.widthMm}x${dims.heightMm}`
+      })
+    )
+  }, [formHeightMm, formPresetId, formWidthMm, printDpi, queue])
+  const mixedSizes = queueSizeKeys.size > 1
+  const mixedSheetSizes = useMemo(
+    () =>
+      queue.flatMap((item) => {
+        const dims = resolveLabelDimensions({
+          presetId: item.presetId ?? formPresetId,
+          widthMm: item.widthMm ?? formWidthMm,
+          heightMm: item.heightMm ?? formHeightMm,
+          dpi: printDpi
+        })
+        return Array.from({ length: item.copies }, () => ({
+          widthMm: dims.widthMm,
+          heightMm: dims.heightMm
+        }))
+      }),
+    [formHeightMm, formPresetId, formWidthMm, printDpi, queue]
+  )
+  const mixedA4Sheets = a4SheetsNeededMixed(mixedSheetSizes)
+  const queueA4Dims = useMemo(() => {
+    const item = queue[0]
+    if (!item) return a4Dims
+    return resolveLabelDimensions({
+      presetId: item.presetId ?? formPresetId,
+      widthMm: item.widthMm ?? formWidthMm,
+      heightMm: item.heightMm ?? formHeightMm,
+      dpi: 300
+    })
+  }, [a4Dims, formHeightMm, formPresetId, formWidthMm, queue])
+  const queueA4Grid = useMemo(
+    () => computeA4LabelGrid(queueA4Dims.widthMm, queueA4Dims.heightMm),
+    [queueA4Dims.heightMm, queueA4Dims.widthMm]
+  )
+  const a4SheetsPreview = mixedSizes
+    ? mixedA4Sheets
+    : a4SheetsNeeded(totalLabels, queueA4Grid.perSheet)
+  const allQueueSamePreset =
+    queue.length > 0 &&
+    queue.every((i) => (i.presetId ?? formPresetId) === (queue[0].presetId ?? formPresetId))
+  const bulkQueuePresetId = allQueueSamePreset ? (queue[0]?.presetId ?? formPresetId) : ''
   const printerOptions = [
     ...printers.map((p) => ({
       value: p.name,
@@ -452,8 +588,12 @@ export function LabelsPage(): React.JSX.Element {
             {pageTab === 'history'
               ? 'Historial de impresiones para reimprimir'
               : printMode === 'a4'
-                ? `Hoja A4 · etiquetas ${a4Dims.widthMm} × ${a4Dims.heightMm} mm`
-                : `Rollo térmico · ${rollDims.widthMm} × ${rollDims.heightMm} mm · CODE128`}
+                ? mixedSizes
+                  ? `Hoja A4 · tamaños mixtos · ~${mixedA4Sheets} hoja(s)`
+                  : `Hoja A4 · etiquetas ${formDims.widthMm} × ${formDims.heightMm} mm`
+                : mixedSizes
+                  ? 'Rollo térmico · tamaños mixtos · CODE128'
+                  : `Rollo térmico · ${formDims.widthMm} × ${formDims.heightMm} mm · CODE128`}
           </p>
         </div>
         {pageTab === 'print' && (
@@ -545,8 +685,8 @@ export function LabelsPage(): React.JSX.Element {
         <>
       <p className="mb-4 text-xs text-[rgb(var(--text-muted))]">
         {printMode === 'a4'
-          ? 'En A4 use Vista previa (ojito) para ver el PDF; al imprimir elegirá impresora y la hoja se distribuirá automáticamente.'
-          : 'Use Vista previa (ojito) para ver el PDF antes de imprimir. El rollo usa tamaño e impresora de Configuración.'}
+          ? 'Elija el tamaño de cada producto en la cola. En A4 los distintos tamaños se colocan en la misma hoja (papel en blanco). Use Vista previa para revisar el PDF.'
+          : 'Elija el tamaño de cada producto en la cola. En rollo cada tamaño se imprime por separado. Use Vista previa para revisar el PDF.'}
       </p>
 
       {message && (
@@ -562,31 +702,81 @@ export function LabelsPage(): React.JSX.Element {
           {queue.length === 0 ? (
             <p className="text-sm text-[rgb(var(--text-muted))]">Sin etiquetas en cola</p>
           ) : (
-            <ul className="max-h-80 space-y-2 overflow-y-auto">
-              {queue.map((item) => (
-                <li
-                  key={item.id}
-                  className="flex items-start justify-between gap-2 rounded-lg border border-surface-border/60 px-3 py-2 text-sm"
-                >
-                  <div>
-                    <p className="font-medium">{item.name}</p>
-                    <p className="font-mono text-xs text-[rgb(var(--text-muted))]">{item.barcode}</p>
-                    {item.price != null && item.price > 0 && (
-                      <MoneyDisplay amount={item.price} size="sm" />
+            <ul className="max-h-[28rem] space-y-2 overflow-y-auto">
+              {queue.map((item) => {
+                const presetId = item.presetId ?? formPresetId
+                const widthMm = item.widthMm ?? formWidthMm
+                const heightMm = item.heightMm ?? formHeightMm
+                const dims = resolveLabelDimensions({
+                  presetId,
+                  widthMm,
+                  heightMm,
+                  dpi: printDpi
+                })
+                return (
+                  <li
+                    key={item.id}
+                    className="space-y-2 rounded-lg border border-surface-border/60 px-3 py-2 text-sm"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-medium leading-snug">{item.name}</p>
+                        <p className="font-mono text-xs text-[rgb(var(--text-muted))]">
+                          {item.barcode}
+                        </p>
+                        {item.price != null && item.price > 0 && (
+                          <MoneyDisplay amount={item.price} size="sm" />
+                        )}
+                        <p className="mt-0.5 text-xs tabular-nums text-[rgb(var(--text-muted))]">
+                          {dims.widthMm} × {dims.heightMm} mm
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className="text-xs text-red-500"
+                        onClick={() => removeQueueItem(item.id)}
+                      >
+                        Quitar
+                      </button>
+                    </div>
+                    <Select
+                      label="Tamaño"
+                      value={presetId}
+                      onChange={(id) => handleQueuePresetChange(item.id, id, item)}
+                      options={A4_LABEL_PRESETS.map((p) => ({ value: p.id, label: p.label }))}
+                    />
+                    {presetId === 'custom' && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <NumberInput
+                          label="Ancho"
+                          min={15}
+                          max={120}
+                          emptyValue={50}
+                          value={widthMm}
+                          onChange={(n) => updateQueueItem(item.id, { presetId: 'custom', widthMm: n })}
+                        />
+                        <NumberInput
+                          label="Alto"
+                          min={8}
+                          max={80}
+                          emptyValue={25}
+                          value={heightMm}
+                          onChange={(n) => updateQueueItem(item.id, { presetId: 'custom', heightMm: n })}
+                        />
+                      </div>
                     )}
-                  </div>
-                  <div className="flex flex-col items-end gap-1">
-                    <Badge variant="muted">×{item.copies}</Badge>
-                    <button
-                      type="button"
-                      className="text-xs text-red-500"
-                      onClick={() => removeQueueItem(item.id)}
-                    >
-                      Quitar
-                    </button>
-                  </div>
-                </li>
-              ))}
+                    <NumberInput
+                      label="Copias"
+                      min={1}
+                      max={500}
+                      value={item.copies}
+                      onChange={(n) =>
+                        updateQueueItem(item.id, { copies: Math.max(1, Math.min(500, n)) })
+                      }
+                    />
+                  </li>
+                )
+              })}
             </ul>
           )}
         </section>
@@ -698,6 +888,32 @@ export function LabelsPage(): React.JSX.Element {
               </div>
             </div>
             <MoneyInput label="Precio (opcional)" value={customPrice} onChange={setCustomPrice} />
+            <Select
+              label="Tamaño de etiqueta"
+              value={formPresetId}
+              onChange={handleFormPresetChange}
+              options={A4_LABEL_PRESETS.map((p) => ({ value: p.id, label: p.label }))}
+            />
+            {formPresetId === 'custom' && (
+              <div className="grid grid-cols-2 gap-2">
+                <NumberInput
+                  label="Ancho (mm)"
+                  min={15}
+                  max={120}
+                  emptyValue={50}
+                  value={formWidthMm}
+                  onChange={setFormWidthMm}
+                />
+                <NumberInput
+                  label="Alto (mm)"
+                  min={8}
+                  max={80}
+                  emptyValue={25}
+                  value={formHeightMm}
+                  onChange={setFormHeightMm}
+                />
+              </div>
+            )}
             <NumberInput
               label="Copias"
               min={1}
@@ -776,13 +992,16 @@ export function LabelsPage(): React.JSX.Element {
               Imprimir en hoja A4
             </h3>
             <div className="space-y-4">
-              <Select
-                label="Tamaño de etiqueta en la hoja"
-                value={a4PresetId}
-                onChange={setA4PresetId}
-                options={A4_LABEL_PRESETS.map((p) => ({ value: p.id, label: p.label }))}
-              />
-              {a4PresetId === 'custom' && (
+              {queue.length > 0 && (
+                <Select
+                  label="Tamaño para todos"
+                  value={bulkQueuePresetId}
+                  onChange={handleApplySizeToAll}
+                  placeholder={mixedSizes ? 'Varios tamaños' : undefined}
+                  options={A4_LABEL_PRESETS.map((p) => ({ value: p.id, label: p.label }))}
+                />
+              )}
+              {bulkQueuePresetId === 'custom' && (
                 <div className="grid gap-3 sm:grid-cols-2">
                   <NumberInput
                     label="Ancho (mm)"
@@ -790,7 +1009,15 @@ export function LabelsPage(): React.JSX.Element {
                     max={120}
                     emptyValue={50}
                     value={a4WidthMm}
-                    onChange={setA4WidthMm}
+                    onChange={(n) => {
+                      setA4WidthMm(n)
+                      setFormWidthMm(n)
+                      applySizeToAllQueue({
+                        presetId: 'custom',
+                        widthMm: n,
+                        heightMm: a4HeightMm
+                      })
+                    }}
                   />
                   <NumberInput
                     label="Alto (mm)"
@@ -798,15 +1025,31 @@ export function LabelsPage(): React.JSX.Element {
                     max={80}
                     emptyValue={25}
                     value={a4HeightMm}
-                    onChange={setA4HeightMm}
+                    onChange={(n) => {
+                      setA4HeightMm(n)
+                      setFormHeightMm(n)
+                      applySizeToAllQueue({
+                        presetId: 'custom',
+                        widthMm: a4WidthMm,
+                        heightMm: n
+                      })
+                    }}
                   />
                 </div>
               )}
-              <div className="rounded-lg bg-brand/10 px-3 py-2 text-sm text-brand">
-                En cada hoja A4 caben {a4Grid.cols} × {a4Grid.rows} = {a4Grid.perSheet} etiquetas de{' '}
-                {a4Dims.widthMm} × {a4Dims.heightMm} mm. Se imprimirán unas {a4SheetsPreview} hoja(s)
-                (distribución automática).
-              </div>
+              {mixedSizes ? (
+                <div className="rounded-lg bg-brand/10 px-3 py-2 text-sm text-brand">
+                  Las etiquetas de distinto tamaño se colocan en la misma hoja A4 (~{mixedA4Sheets}{' '}
+                  hoja(s)). Use papel en blanco o para cortar; no planchas precortadas de un solo
+                  formato.
+                </div>
+              ) : (
+                <div className="rounded-lg bg-brand/10 px-3 py-2 text-sm text-brand">
+                  En cada hoja A4 caben {queueA4Grid.cols} × {queueA4Grid.rows} = {queueA4Grid.perSheet} etiquetas de{' '}
+                  {queueA4Dims.widthMm} × {queueA4Dims.heightMm} mm. Se imprimirán unas {a4SheetsPreview} hoja(s)
+                  (distribución automática).
+                </div>
+              )}
               <Select
                 label="Impresora"
                 value={a4Printer}

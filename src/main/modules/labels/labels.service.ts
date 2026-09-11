@@ -3,7 +3,12 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
 import type { ApiResult } from '@shared/types/api'
-import type { LabelPdfPreviewResult, LabelPrintPayload } from '@shared/types/labels'
+import type {
+  LabelPdfPreviewResult,
+  LabelPrintHistoryJob,
+  LabelPrintHistorySummary,
+  LabelPrintPayload
+} from '@shared/types/labels'
 import { formatMoney } from '@shared/lib/currency'
 import { resolveLabelDimensions, type LabelDimensions } from '@shared/lib/thermal-print'
 import { getDatabase } from '../../database/connection'
@@ -14,7 +19,16 @@ import {
   type LabelPrintContent
 } from '../../services/label-print.service'
 import { getLabelDimensionsFromSettings } from '../../services/label-settings'
-import { barcodeExists } from './labels.repository'
+import {
+  barcodeExists,
+  clearLabelPrintHistory,
+  deleteLabelPrintJob,
+  getLabelPrintJob,
+  insertLabelPrintJob,
+  listLabelPrintJobs,
+  listPreviewNamesForJobs,
+  mapJobItemPrice
+} from './labels.repository'
 
 function getSetting(key: string, fallback = ''): string {
   const db = getDatabase()
@@ -44,16 +58,32 @@ function resolvePayloadDims(payload: LabelPrintPayload): {
   dims: LabelDimensions
 } {
   const mode = payload.mode === 'a4' ? 'a4' : 'roll'
-  const dims =
-    mode === 'a4' && payload.a4
-      ? resolveLabelDimensions({
-          presetId: payload.a4.presetId,
-          widthMm: payload.a4.widthMm,
-          heightMm: payload.a4.heightMm,
-          dpi: 300
-        })
-      : getLabelDimensionsFromSettings()
-  return { mode, dims }
+  if (mode === 'a4' && payload.a4) {
+    return {
+      mode,
+      dims: resolveLabelDimensions({
+        presetId: payload.a4.presetId,
+        widthMm: payload.a4.widthMm,
+        heightMm: payload.a4.heightMm,
+        dpi: 300
+      })
+    }
+  }
+
+  const settingsDims = getLabelDimensionsFromSettings()
+  if (payload.size) {
+    return {
+      mode,
+      dims: resolveLabelDimensions({
+        presetId: payload.size.presetId,
+        widthMm: payload.size.widthMm,
+        heightMm: payload.size.heightMm,
+        dpi: settingsDims.dpi
+      })
+    }
+  }
+
+  return { mode, dims: settingsDims }
 }
 
 function buildContentsFromPayload(
@@ -126,13 +156,43 @@ export async function printLabelsService(
   }
 
   try {
+    let printed = built.contents.length
+    let sheets: number | undefined
+
     if (mode === 'a4') {
       const result = await printLabelsOnA4(built.contents, printerForA4, dims)
-      return { ok: true, data: { printed: result.printed, sheets: result.sheets } }
+      printed = result.printed
+      sheets = result.sheets
+    } else {
+      await printLabels(built.contents, printerLabels, dims, printerTicket)
     }
 
-    await printLabels(built.contents, printerLabels, dims, printerTicket)
-    return { ok: true, data: { printed: built.contents.length } }
+    try {
+      const db = getDatabase()
+      insertLabelPrintJob(db, {
+        mode,
+        labelCount: printed,
+        itemCount: payload.items.length,
+        sheets: sheets ?? null,
+        a4PresetId:
+          mode === 'a4'
+            ? (payload.a4?.presetId ?? null)
+            : (payload.size?.presetId ?? getSetting('label_preset', '50x25')),
+        a4WidthMm: dims.widthMm,
+        a4HeightMm: dims.heightMm,
+        a4PrinterName: mode === 'a4' ? printerForA4 : null,
+        items: payload.items.map((item) => ({
+          name: item.name,
+          barcode: item.barcode,
+          price: item.price ?? null,
+          copies: Math.max(1, Math.min(500, Math.floor(item.copies)))
+        }))
+      })
+    } catch (histErr) {
+      console.warn('[labels] No se pudo guardar historial:', histErr)
+    }
+
+    return { ok: true, data: { printed, sheets } }
   } catch (e) {
     return {
       ok: false,
@@ -141,6 +201,78 @@ export async function printLabelsService(
   } finally {
     cleanupTempImages(built.tempImages)
   }
+}
+
+export function listLabelPrintHistoryService(): ApiResult<LabelPrintHistorySummary[]> {
+  const db = getDatabase()
+  const jobs = listLabelPrintJobs(db, 300)
+  const names = listPreviewNamesForJobs(
+    db,
+    jobs.map((j) => j.id)
+  )
+  return {
+    ok: true,
+    data: jobs.map((j) => {
+      const preview = names.get(j.id) ?? []
+      const extra = j.item_count > preview.length ? ` (+${j.item_count - preview.length})` : ''
+      return {
+        id: j.id,
+        printedAt: j.printed_at,
+        mode: j.mode,
+        labelCount: j.label_count,
+        itemCount: j.item_count,
+        sheets: j.sheets,
+        presetId: j.a4_preset_id,
+        widthMm: j.a4_width_mm,
+        heightMm: j.a4_height_mm,
+        previewNames: preview.join(', ') + extra
+      }
+    })
+  }
+}
+
+export function getLabelPrintHistoryJobService(
+  id: number
+): ApiResult<LabelPrintHistoryJob> {
+  const db = getDatabase()
+  const found = getLabelPrintJob(db, id)
+  if (!found) return { ok: false, error: 'Impresión no encontrada' }
+  const { job, items } = found
+  return {
+    ok: true,
+    data: {
+      id: job.id,
+      printedAt: job.printed_at,
+      mode: job.mode,
+      labelCount: job.label_count,
+      itemCount: job.item_count,
+      sheets: job.sheets,
+      a4PresetId: job.a4_preset_id,
+      a4WidthMm: job.a4_width_mm,
+      a4HeightMm: job.a4_height_mm,
+      a4PrinterName: job.a4_printer_name,
+      items: items.map((item) => ({
+        id: item.id,
+        name: item.name,
+        barcode: item.barcode,
+        price: mapJobItemPrice(item.price),
+        copies: item.copies
+      }))
+    }
+  }
+}
+
+export function deleteLabelPrintHistoryJobService(id: number): ApiResult<{ deleted: boolean }> {
+  const db = getDatabase()
+  const deleted = deleteLabelPrintJob(db, id)
+  if (!deleted) return { ok: false, error: 'Impresión no encontrada' }
+  return { ok: true, data: { deleted: true } }
+}
+
+export function clearLabelPrintHistoryService(): ApiResult<{ deleted: number }> {
+  const db = getDatabase()
+  const deleted = clearLabelPrintHistory(db)
+  return { ok: true, data: { deleted } }
 }
 
 export async function previewLabelsPdfService(

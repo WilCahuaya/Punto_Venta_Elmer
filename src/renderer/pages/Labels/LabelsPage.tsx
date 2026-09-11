@@ -20,6 +20,7 @@ import {
   isCompactLabel,
   resolveLabelDimensions
 } from '@shared/lib/thermal-print'
+import { LabelHistoryPanel } from '../../features/labels/LabelHistoryPanel'
 import { useLabelQueueStore } from '../../stores/label-queue.store'
 import { useSettingsStore } from '../../stores/settings.store'
 
@@ -74,6 +75,7 @@ export function LabelsPage(): React.JSX.Element {
   const removeQueueItem = useLabelQueueStore((s) => s.removeItem)
   const clearQueue = useLabelQueueStore((s) => s.clear)
 
+  const [pageTab, setPageTab] = useState<'print' | 'history'>('print')
   const [printMode, setPrintMode] = useState<LabelPrintMode>('roll')
   const [search, setSearch] = useState('')
   const [products, setProducts] = useState<Product[]>([])
@@ -443,69 +445,104 @@ export function LabelsPage(): React.JSX.Element {
 
   return (
     <div>
-      <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
+      <header className="mb-4 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="text-2xl font-semibold">Etiquetas</h2>
           <p className="text-sm text-[rgb(var(--text-muted))]">
-            {printMode === 'a4'
-              ? `Hoja A4 · etiquetas ${a4Dims.widthMm} × ${a4Dims.heightMm} mm`
-              : `Rollo térmico · ${rollDims.widthMm} × ${rollDims.heightMm} mm · CODE128`}
+            {pageTab === 'history'
+              ? 'Historial de impresiones para reimprimir'
+              : printMode === 'a4'
+                ? `Hoja A4 · etiquetas ${a4Dims.widthMm} × ${a4Dims.heightMm} mm`
+                : `Rollo térmico · ${rollDims.widthMm} × ${rollDims.heightMm} mm · CODE128`}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex rounded-lg border border-surface-border p-0.5">
-            <button
-              type="button"
-              className={[
-                'rounded-md px-3 py-1.5 text-sm transition-colors',
-                printMode === 'roll'
-                  ? 'bg-brand/15 font-medium text-brand ring-1 ring-brand/40'
-                  : 'text-[rgb(var(--text-muted))] hover:text-[rgb(var(--text))]'
-              ].join(' ')}
-              onClick={() => setPrintMode('roll')}
+        {pageTab === 'print' && (
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex rounded-lg border border-surface-border p-0.5">
+              <button
+                type="button"
+                className={[
+                  'rounded-md px-3 py-1.5 text-sm transition-colors',
+                  printMode === 'roll'
+                    ? 'bg-brand/15 font-medium text-brand ring-1 ring-brand/40'
+                    : 'text-[rgb(var(--text-muted))] hover:text-[rgb(var(--text))]'
+                ].join(' ')}
+                onClick={() => setPrintMode('roll')}
+              >
+                Rollo térmico
+              </button>
+              <button
+                type="button"
+                className={[
+                  'rounded-md px-3 py-1.5 text-sm transition-colors',
+                  printMode === 'a4'
+                    ? 'bg-brand/15 font-medium text-brand ring-1 ring-brand/40'
+                    : 'text-[rgb(var(--text-muted))] hover:text-[rgb(var(--text))]'
+                ].join(' ')}
+                onClick={() => setPrintMode('a4')}
+              >
+                Hoja A4
+              </button>
+            </div>
+            <Button
+              variant="secondary"
+              disabled={queue.length === 0 || printing}
+              onClick={() => clearQueue()}
             >
-              Rollo térmico
-            </button>
-            <button
-              type="button"
-              className={[
-                'rounded-md px-3 py-1.5 text-sm transition-colors',
-                printMode === 'a4'
-                  ? 'bg-brand/15 font-medium text-brand ring-1 ring-brand/40'
-                  : 'text-[rgb(var(--text-muted))] hover:text-[rgb(var(--text))]'
-              ].join(' ')}
-              onClick={() => setPrintMode('a4')}
+              Vaciar cola
+            </Button>
+            <Button
+              variant="secondary"
+              disabled={queue.length === 0 || printing || previewing}
+              onClick={() => void handlePreviewPdf()}
+              title="Previsualizar PDF"
+              aria-label="Previsualizar PDF"
             >
-              Hoja A4
-            </button>
+              <EyeIcon />
+              {previewing ? 'Generando...' : 'Vista previa'}
+            </Button>
+            <Button disabled={queue.length === 0 || printing} onClick={handlePrintClick}>
+              {printing
+                ? 'Imprimiendo...'
+                : printMode === 'a4'
+                  ? `Imprimir A4 (${totalLabels})`
+                  : `Imprimir (${totalLabels})`}
+            </Button>
           </div>
-          <Button
-            variant="secondary"
-            disabled={queue.length === 0 || printing}
-            onClick={() => clearQueue()}
-          >
-            Vaciar cola
-          </Button>
-          <Button
-            variant="secondary"
-            disabled={queue.length === 0 || printing || previewing}
-            onClick={() => void handlePreviewPdf()}
-            title="Previsualizar PDF"
-            aria-label="Previsualizar PDF"
-          >
-            <EyeIcon />
-            {previewing ? 'Generando...' : 'Vista previa'}
-          </Button>
-          <Button disabled={queue.length === 0 || printing} onClick={handlePrintClick}>
-            {printing
-              ? 'Imprimiendo...'
-              : printMode === 'a4'
-                ? `Imprimir A4 (${totalLabels})`
-                : `Imprimir (${totalLabels})`}
-          </Button>
-        </div>
+        )}
       </header>
 
+      <div className="mb-5 flex rounded-lg border border-surface-border p-0.5 w-fit">
+        <button
+          type="button"
+          className={[
+            'rounded-md px-4 py-1.5 text-sm transition-colors',
+            pageTab === 'print'
+              ? 'bg-brand/15 font-medium text-brand ring-1 ring-brand/40'
+              : 'text-[rgb(var(--text-muted))] hover:text-[rgb(var(--text))]'
+          ].join(' ')}
+          onClick={() => setPageTab('print')}
+        >
+          Imprimir
+        </button>
+        <button
+          type="button"
+          className={[
+            'rounded-md px-4 py-1.5 text-sm transition-colors',
+            pageTab === 'history'
+              ? 'bg-brand/15 font-medium text-brand ring-1 ring-brand/40'
+              : 'text-[rgb(var(--text-muted))] hover:text-[rgb(var(--text))]'
+          ].join(' ')}
+          onClick={() => setPageTab('history')}
+        >
+          Historial
+        </button>
+      </div>
+
+      {pageTab === 'history' ? (
+        <LabelHistoryPanel />
+      ) : (
+        <>
       <p className="mb-4 text-xs text-[rgb(var(--text-muted))]">
         {printMode === 'a4'
           ? 'En A4 use Vista previa (ojito) para ver el PDF; al imprimir elegirá impresora y la hoja se distribuirá automáticamente.'
@@ -848,6 +885,8 @@ export function LabelsPage(): React.JSX.Element {
           <p className="text-sm text-[rgb(var(--text-muted))]">Sin documento</p>
         )}
       </Modal>
+        </>
+      )}
     </div>
   )
 }

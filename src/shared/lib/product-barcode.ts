@@ -1,9 +1,15 @@
-function normalizeNameKey(name: string): string {
-  return name
-    .trim()
-    .toLowerCase()
+/** Quita tildes/diacríticos. CODE128 solo admite ASCII (Ú → U, Ñ → N). */
+export function foldBarcodeText(text: string): string {
+  return text
     .normalize('NFD')
     .replace(/\p{M}/gu, '')
+    .replace(/[''`´]/g, '-')
+    .replace(/-{2,}/g, '-')
+    .trim()
+}
+
+function normalizeNameKey(name: string): string {
+  return foldBarcodeText(name).toLowerCase()
 }
 
 function hashKey(key: string): number {
@@ -21,15 +27,14 @@ export function extractInitials(
   maxWords = 3,
   charsPerWord = 2
 ): string {
-  const words = text
-    .trim()
+  const words = foldBarcodeText(text)
     .split(/\s+/)
-    .filter((w) => /[a-zA-Z0-9áéíóúñÁÉÍÓÚÑ]/.test(w))
+    .filter((w) => /[a-zA-Z0-9]/i.test(w))
 
   return words
     .slice(0, maxWords)
     .map((word) => {
-      const clean = word.replace(/[^a-zA-Z0-9áéíóúñÁÉÍÓÚÑ]/g, '')
+      const clean = word.replace(/[^a-zA-Z0-9]/g, '')
       return clean.slice(0, charsPerWord).toUpperCase()
     })
     .join('')
@@ -58,10 +63,7 @@ export function deriveBarcodeFromCatalog(
  * llegan como LA'LA'6551 en Windows en español).
  */
 export function normalizeScannedBarcode(scanned: string): string {
-  return scanned
-    .trim()
-    .replace(/[''`´]/g, '-')
-    .replace(/-{2,}/g, '-')
+  return foldBarcodeText(scanned)
 }
 
 export function resolveUniqueBarcode(

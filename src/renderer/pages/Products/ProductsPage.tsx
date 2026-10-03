@@ -33,7 +33,7 @@ export function ProductsPage(): React.JSX.Element {
   const [search, setSearch] = useState('')
   const [categoryId, setCategoryId] = useState('')
   const [lowStockOnly, setLowStockOnly] = useState(false)
-  const [includeInactive, setIncludeInactive] = useState(false)
+  const [showBajas, setShowBajas] = useState(false)
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Product | null>(null)
@@ -60,11 +60,11 @@ export function ProductsPage(): React.JSX.Element {
       search: search || undefined,
       categoryId: categoryId ? Number(categoryId) : undefined,
       lowStockOnly,
-      includeInactive
+      onlyInactive: showBajas
     })
     if (result.ok) setProducts(result.data)
     setLoading(false)
-  }, [search, categoryId, lowStockOnly, includeInactive])
+  }, [search, categoryId, lowStockOnly, showBajas])
 
   useEffect(() => {
     void loadCategories()
@@ -215,10 +215,10 @@ export function ProductsPage(): React.JSX.Element {
         <label className="flex items-center gap-2 self-end pb-2 text-sm">
           <input
             type="checkbox"
-            checked={includeInactive}
-            onChange={(e) => setIncludeInactive(e.target.checked)}
+            checked={showBajas}
+            onChange={(e) => setShowBajas(e.target.checked)}
           />
-          Mostrar inactivos
+          Mostrar bajas
         </label>
       </div>
 
@@ -246,7 +246,7 @@ export function ProductsPage(): React.JSX.Element {
             ) : products.length === 0 ? (
               <tr>
                 <td colSpan={8} className="px-4 py-8 text-center text-[rgb(var(--text-muted))]">
-                  Sin productos
+                  {showBajas ? 'No hay bajas' : 'Sin productos'}
                 </td>
               </tr>
             ) : (
@@ -328,7 +328,7 @@ export function ProductsPage(): React.JSX.Element {
                   </td>
                   <td className="px-3 py-2">
                     <Badge variant={p.isActive ? 'success' : 'muted'}>
-                      {p.isActive ? 'Activo' : 'Inactivo'}
+                      {p.isActive ? 'Activo' : 'Baja'}
                     </Badge>
                   </td>
                   <td className="px-3 py-2 text-right">

@@ -40,6 +40,17 @@ function normalizeBarcode(barcode?: string | null): string | null {
   return normalizeScannedBarcode(v)
 }
 
+function findProductRowByFoldedBarcode(db: ReturnType<typeof getDatabase>, folded: string) {
+  if (!folded) return undefined
+  const rows = db
+    .prepare(
+      `SELECT id, barcode FROM products WHERE is_active = 1 AND barcode IS NOT NULL AND barcode != ''`
+    )
+    .all() as Array<{ id: number; barcode: string }>
+  const match = rows.find((r) => normalizeScannedBarcode(r.barcode) === folded)
+  return match ? getProductById(db, match.id) : undefined
+}
+
 function normalizeProductCode(code?: string | null): string | null {
   const v = code?.trim()
   return v ? v : null
@@ -164,15 +175,17 @@ export function lookupProductByBarcodeService(barcode: string): ApiResult<Produc
   const raw = barcode.trim()
   if (!raw) return { ok: false, error: 'Código vacío' }
 
-  const candidates = [raw]
   const normalized = normalizeScannedBarcode(raw)
-  if (normalized !== raw) candidates.push(normalized)
+  const candidates = [...new Set([raw, normalized].filter(Boolean))]
 
   const db = getDatabase()
   for (const code of candidates) {
     const row = getProductByBarcodeRow(db, code)
     if (row) return { ok: true, data: mapProductRow(row) }
   }
+
+  const folded = findProductRowByFoldedBarcode(db, normalized)
+  if (folded) return { ok: true, data: mapProductRow(folded) }
 
   return { ok: false, error: 'Producto no encontrado' }
 }

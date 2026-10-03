@@ -1,3 +1,5 @@
+/** Extrae un mensaje usable de errores serializados por IPC / Electron. */
+export declare function errorMessage(e: unknown, fallback: string): string;
 export interface BarcodeOptions {
     width?: number;
     height?: number;

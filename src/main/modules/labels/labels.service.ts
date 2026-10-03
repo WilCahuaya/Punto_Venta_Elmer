@@ -10,6 +10,7 @@ import type {
   LabelPrintPayload
 } from '@shared/types/labels'
 import { formatMoney } from '@shared/lib/currency'
+import { errorMessage } from '@shared/lib/error-message'
 import { resolveLabelDimensions, type LabelDimensions } from '@shared/lib/thermal-print'
 import { getDatabase } from '../../database/connection'
 import {
@@ -134,6 +135,7 @@ function buildContentsFromPayload(
         priceText,
         barcodeCode: item.barcode,
         barcodeImagePath: imagePath,
+        barcodeBase64: base64,
         dims: itemDims
       })
     }
@@ -234,7 +236,7 @@ export async function printLabelsService(
   } catch (e) {
     return {
       ok: false,
-      error: e instanceof Error ? e.message : 'Error al imprimir etiquetas'
+      error: errorMessage(e, 'Error al imprimir etiquetas')
     }
   } finally {
     cleanupTempImages(built.tempImages)
@@ -349,7 +351,7 @@ export async function previewLabelsPdfService(
   } catch (e) {
     return {
       ok: false,
-      error: e instanceof Error ? e.message : 'Error al generar vista previa'
+      error: errorMessage(e, 'Error al generar vista previa')
     }
   } finally {
     cleanupTempImages(built.tempImages)

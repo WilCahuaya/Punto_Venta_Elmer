@@ -3,7 +3,6 @@ import { existsSync, mkdirSync, writeFileSync, unlinkSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
-import { pathToFileURL } from 'url'
 import {
   buildLabelCellCss,
   buildLabelCellHtml,
@@ -21,6 +20,7 @@ import {
   mmToMicrons,
   type LabelDimensions
 } from '@shared/lib/thermal-print'
+import { errorMessage } from '@shared/lib/error-message'
 
 function escapeHtml(text: string): string {
   return text
@@ -38,22 +38,51 @@ export interface LabelPrintContent {
   priceText: string | null
   barcodeCode: string
   barcodeImagePath: string
+  barcodeBase64?: string
   dims?: LabelDimensions
+}
+
+interface PreparedBarcode {
+  dataUrl: string
+  width: number
+  height: number
+  path?: string
+}
+
+function loadNativeBarcode(sourcePath: string, base64?: string): Electron.NativeImage {
+  if (base64?.trim()) {
+    const fromBuf = nativeImage.createFromBuffer(Buffer.from(base64, 'base64'))
+    if (!fromBuf.isEmpty()) return fromBuf
+  }
+  if (sourcePath) {
+    return nativeImage.createFromPath(sourcePath)
+  }
+  return nativeImage.createEmpty()
+}
+
+function toDataUrl(png: Buffer | string): string {
+  const b64 = typeof png === 'string' ? png : png.toString('base64')
+  return `data:image/png;base64,${b64}`
 }
 
 function prepareBarcodeImage(
   sourcePath: string,
   dims: LabelDimensions,
-  hasPrice: boolean
-): { path: string; width: number; height: number } {
+  hasPrice: boolean,
+  base64?: string
+): PreparedBarcode {
   const maxWidthPx = Math.round((labelBarcodeMaxWidthMm(dims.widthMm) / 25.4) * dims.dpi)
   const maxHeightPx = Math.round((labelBarcodeBarsMaxMm(dims.heightMm, hasPrice) / 25.4) * dims.dpi)
   const minBarsMm = isCompactLabel(dims.widthMm, dims.heightMm) ? 3.5 : 8
   const minHeightPx = Math.round((minBarsMm / 25.4) * dims.dpi)
 
-  const img = nativeImage.createFromPath(sourcePath)
+  const img = loadNativeBarcode(sourcePath, base64)
   if (img.isEmpty()) {
-    return { path: sourcePath, width: maxWidthPx, height: minHeightPx }
+    return {
+      dataUrl: base64?.trim() ? toDataUrl(base64) : '',
+      width: maxWidthPx,
+      height: minHeightPx
+    }
   }
 
   const { width: srcW, height: srcH } = img.getSize()
@@ -82,15 +111,20 @@ function prepareBarcodeImage(
       ? img.resize({ width: targetW, height: targetH, quality: 'better' })
       : img
 
-  if (targetW === srcW && targetH === srcH) {
-    return { path: sourcePath, width: targetW, height: targetH }
+  return {
+    dataUrl: toDataUrl(resized.toPNG()),
+    width: targetW,
+    height: targetH
   }
+}
 
-  const dir = join(tmpdir(), 'pv-labels')
-  mkdirSync(dir, { recursive: true })
-  const out = join(dir, `${randomUUID()}-barcode.png`)
-  writeFileSync(out, resized.toPNG())
-  return { path: out, width: targetW, height: targetH }
+function barcodeFromContent(content: LabelPrintContent, dims: LabelDimensions): PreparedBarcode {
+  return prepareBarcodeImage(
+    content.barcodeImagePath,
+    dims,
+    Boolean(content.priceText),
+    content.barcodeBase64
+  )
 }
 
 function mmToScreenPx(mm: number): number {
@@ -111,7 +145,7 @@ export function isPdfVirtualPrinter(name: string): boolean {
 
 function buildLabelBodyHtml(
   content: LabelPrintContent,
-  barcode: { path: string; width: number; height: number },
+  barcode: PreparedBarcode,
   dims: LabelDimensions
 ): string {
   return buildLabelCellHtml(
@@ -119,7 +153,7 @@ function buildLabelBodyHtml(
       productName: content.productName,
       priceText: content.priceText,
       barcodeCode: content.barcodeCode,
-      barcodeSrc: pathToFileURL(barcode.path).href
+      barcodeSrc: barcode.dataUrl
     },
     dims
   )
@@ -152,7 +186,7 @@ function buildLabelsDocumentHtml(bodies: string[], dims: LabelDimensions): strin
 
 export function buildLabelHtml(
   content: LabelPrintContent,
-  barcode: { path: string; width: number; height: number },
+  barcode: PreparedBarcode,
   dims: LabelDimensions
 ): string {
   return buildSingleLabelDocumentHtml(
@@ -160,7 +194,7 @@ export function buildLabelHtml(
       productName: content.productName,
       priceText: content.priceText,
       barcodeCode: content.barcodeCode,
-      barcodeSrc: pathToFileURL(barcode.path).href
+      barcodeSrc: barcode.dataUrl
     },
     dims
   )
@@ -175,14 +209,18 @@ function writeTempHtml(html: string): string {
 }
 
 async function waitForImages(win: BrowserWindow): Promise<void> {
-  await win.webContents.executeJavaScript(`
-    Promise.all(Array.from(document.images).map((img) =>
-      img.complete ? Promise.resolve() : new Promise((resolve) => {
-        img.onload = resolve
-        img.onerror = resolve
-      })
-    ))
-  `)
+  try {
+    await win.webContents.executeJavaScript(`
+      Promise.all(Array.from(document.images).map((img) =>
+        img.complete ? Promise.resolve() : new Promise((resolve) => {
+          img.onload = resolve
+          img.onerror = resolve
+        })
+      ))
+    `)
+  } catch {
+    /* continuar: printToPDF igual puede generar el documento */
+  }
   await new Promise((resolve) => setTimeout(resolve, 250))
 }
 
@@ -247,7 +285,8 @@ async function renderHtmlToPdf(
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: false
+      sandbox: false,
+      webSecurity: false
     }
   })
 
@@ -264,8 +303,12 @@ async function renderHtmlToPdf(
       margins: { marginType: 'none' },
       scale: 1
     })
+  } catch (e) {
+    throw new Error(
+      `No se pudo generar el PDF (${page.widthMm}×${page.heightMm} mm): ${errorMessage(e, 'error desconocido')}`
+    )
   } finally {
-    win.close()
+    if (!win.isDestroyed()) win.close()
   }
 }
 
@@ -285,7 +328,8 @@ async function printHtmlSilent(
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: false
+      sandbox: false,
+      webSecurity: false
     }
   })
 
@@ -317,7 +361,7 @@ async function printHtmlSilent(
       )
     })
   } finally {
-    win.close()
+    if (!win.isDestroyed()) win.close()
   }
 }
 
@@ -360,12 +404,9 @@ async function deliverLabelDocument(
   }
 }
 
-function cleanupBarcodeTemps(
-  barcodes: Array<{ path: string }>,
-  originals: string[]
-): void {
+function cleanupBarcodeTemps(barcodes: PreparedBarcode[], originals: string[]): void {
   for (const b of barcodes) {
-    if (!originals.includes(b.path) && existsSync(b.path)) {
+    if (b.path && !originals.includes(b.path) && existsSync(b.path)) {
       try {
         unlinkSync(b.path)
       } catch {
@@ -385,7 +426,7 @@ export async function printLabels(
   if (!contents.length) throw new Error('No hay etiquetas para imprimir')
 
   const prepared = contents.map((content) => {
-    const barcode = prepareBarcodeImage(content.barcodeImagePath, dims, Boolean(content.priceText))
+    const barcode = barcodeFromContent(content, dims)
     return { content, barcode }
   })
   const bodies = prepared.map(({ content, barcode }) =>
@@ -487,12 +528,12 @@ function prepareA4PackedHtml(
   sheets: number
   prepared: Array<{
     content: LabelPrintContent
-    barcode: { path: string; width: number; height: number }
+    barcode: PreparedBarcode
   }>
 } {
   const prepared = contents.map((content) => {
     const dims = contentDims(content, fallbackDims)
-    const barcode = prepareBarcodeImage(content.barcodeImagePath, dims, Boolean(content.priceText))
+    const barcode = barcodeFromContent(content, dims)
     return { content, barcode, dims }
   })
   const pack = packA4Labels(
@@ -522,7 +563,7 @@ export async function generateLabelsPdf(
   let sheets = 1
   let prepared: Array<{
     content: LabelPrintContent
-    barcode: { path: string; width: number; height: number }
+    barcode: PreparedBarcode
   }>
 
   if (mode === 'a4') {
@@ -534,11 +575,7 @@ export async function generateLabelsPdf(
   } else {
     prepared = contents.map((content) => {
       const itemDims = contentDims(content, dims)
-      const barcode = prepareBarcodeImage(
-        content.barcodeImagePath,
-        itemDims,
-        Boolean(content.priceText)
-      )
+      const barcode = barcodeFromContent(content, itemDims)
       return { content, barcode, dims: itemDims }
     })
     const firstDims = contentDims(contents[0], dims)

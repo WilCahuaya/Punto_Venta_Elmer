@@ -35,6 +35,7 @@ export function PaymentModal({
   const [mode, setMode] = useState<ChargeMode>('cash')
   const [paid, setPaid] = useState(total)
   const [creditTo, setCreditTo] = useState('')
+  const [creditMethod, setCreditMethod] = useState<PaymentMethod>('cash')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -43,13 +44,15 @@ export function PaymentModal({
       setMode('cash')
       setPaid(total)
       setCreditTo('')
+      setCreditMethod('cash')
       setError(null)
       setSaving(false)
     }
   }, [open, total])
 
   const isCredit = mode === 'credit'
-  const paymentMethod: PaymentMethod = mode === 'yape' ? 'yape' : 'cash'
+  const paymentMethod: PaymentMethod =
+    mode === 'yape' ? 'yape' : isCredit ? creditMethod : 'cash'
   const remaining = isCredit ? roundMoney(Math.max(0, total - paid)) : 0
   const change = mode === 'cash' ? roundMoney(Math.max(0, paid - total)) : 0
   const quickAmounts = [10, 20, 50, 100, 200].filter((bill) => bill > total)
@@ -224,8 +227,39 @@ export function PaymentModal({
               value={paid}
               onChange={setPaid}
             />
+            {paid > 0 && (
+              <div>
+                <p className="mb-2 text-sm font-medium">Cobrar adelanto con</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCreditMethod('cash')}
+                    className={[
+                      'rounded-xl border px-3 py-2 text-left text-sm',
+                      creditMethod === 'cash'
+                        ? 'border-brand bg-brand/10 ring-2 ring-brand/40'
+                        : 'border-surface-border'
+                    ].join(' ')}
+                  >
+                    Efectivo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCreditMethod('yape')}
+                    className={[
+                      'rounded-xl border px-3 py-2 text-left text-sm',
+                      creditMethod === 'yape'
+                        ? 'border-fuchsia-500 bg-fuchsia-500/10 ring-2 ring-fuchsia-500/40'
+                        : 'border-surface-border'
+                    ].join(' ')}
+                  >
+                    Yape
+                  </button>
+                </div>
+              </div>
+            )}
             <p className="text-xs text-[rgb(var(--text-muted))]">
-              Puede ser 0. El adelanto entra a la caja de este turno.
+              Puede ser 0. El adelanto en efectivo entra al cajón; el Yape no.
             </p>
 
             <div className="rounded-lg bg-amber-500/10 px-4 py-3 text-center">

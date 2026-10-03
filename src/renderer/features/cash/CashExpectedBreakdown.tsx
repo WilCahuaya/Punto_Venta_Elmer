@@ -62,6 +62,12 @@ export function CashExpectedBreakdown({
             <span>Ventas Yape (no entran al cajón)</span>
             <MoneyDisplay amount={session.totalYape} size="sm" />
           </div>
+          {session.totalYape > 0 && session.creditYapeCollected !== 0 && (
+            <div className="mt-1 flex items-center justify-between gap-3 font-medium">
+              <span>Total Yape cobrado</span>
+              <MoneyDisplay amount={session.totalYapeCollected} size="sm" />
+            </div>
+          )}
           {session.creditYapeCollected !== 0 && (
             <div className="mt-1 flex items-center justify-between gap-3 text-xs">
               <span>Abonos fiado por Yape</span>

@@ -20,7 +20,7 @@ import { Modal } from '../../components/ui/Modal'
 import { MoneyDisplay } from '../../components/ui/MoneyDisplay'
 import { NumberInput } from '../../components/ui/NumberInput'
 import { Select } from '../../components/ui/Select'
-import { barcodeToBase64, LABEL_BARCODE_OPTIONS } from '../../lib/barcode'
+import { barcodesToBase64Map, errorMessage, LABEL_BARCODE_OPTIONS } from '../../lib/barcode'
 import { formatDateTime } from '../../lib/datetime'
 import { useSettingsStore } from '../../stores/settings.store'
 
@@ -189,9 +189,15 @@ export function LabelHistoryPanel(): React.JSX.Element {
 
   async function buildPayload(items: EditableItem[], mode: LabelPrintMode): Promise<LabelPrintPayload> {
     const uniqueCodes = [...new Set(items.map((i) => i.barcode))]
-    const barcodeImages: Record<string, string> = {}
-    for (const code of uniqueCodes) {
-      barcodeImages[code] = await barcodeToBase64(code, LABEL_BARCODE_OPTIONS)
+    const { images: barcodeImages, failed } = await barcodesToBase64Map(
+      uniqueCodes,
+      LABEL_BARCODE_OPTIONS
+    )
+    if (failed.length > 0) {
+      const sample = failed.slice(0, 5).join(', ')
+      throw new Error(
+        `No se pudieron generar ${failed.length} código(s): ${sample}${failed.length > 5 ? '…' : ''}`
+      )
     }
 
     const dpi = mode === 'a4' ? 300 : labelDpi
@@ -256,7 +262,7 @@ export function LabelHistoryPanel(): React.JSX.Element {
       closeJob()
       void load()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error al reimprimir')
+      setError(errorMessage(e, 'Error al reimprimir'))
     } finally {
       setPrinting(false)
     }

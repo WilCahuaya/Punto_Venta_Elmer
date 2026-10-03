@@ -34,6 +34,8 @@ export interface CashSessionSummary extends CashSession {
   creditCashCollected: number
   /** Abonos/adelantos de fiados por Yape de este turno (no entran al cajón). */
   creditYapeCollected: number
+  /** Yape cobrado en el turno: ventas Yape netas + abonos fiado Yape. */
+  totalYapeCollected: number
   salesProfit: number
   /** Apertura + ingresos − egresos + ventas netas en efectivo + abonos fiado efectivo. */
   expectedInDrawer: number

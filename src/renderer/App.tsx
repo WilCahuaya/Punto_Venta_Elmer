@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { HashRouter } from 'react-router-dom'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { AppRoutes } from './routes'
 import { useAuthStore } from './stores/auth.store'
 import { useCashStore } from './stores/cash.store'
@@ -16,8 +17,10 @@ export default function App(): React.JSX.Element {
   }, [hydrateAuth, hydrateCash, hydrateSettings])
 
   return (
-    <HashRouter>
-      <AppRoutes />
-    </HashRouter>
+    <ErrorBoundary>
+      <HashRouter>
+        <AppRoutes />
+      </HashRouter>
+    </ErrorBoundary>
   )
 }

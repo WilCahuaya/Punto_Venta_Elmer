@@ -1,3 +1,5 @@
+/** Quita tildes/diacríticos. CODE128 solo admite ASCII (Ú → U, Ñ → N). */
+export declare function foldBarcodeText(text: string): string;
 /** Extrae iniciales de cada palabra (ej. "Ropa Hombre" → "RH", "Camisa Polo" → "CP"). */
 export declare function extractInitials(text: string, maxWords?: number, charsPerWord?: number): string;
 /**

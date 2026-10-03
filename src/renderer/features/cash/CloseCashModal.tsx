@@ -75,10 +75,10 @@ export function CloseCashModal({ open, summary, onClose }: CloseCashModalProps):
             <span className="text-[rgb(var(--text-muted))]">= Efectivo neto en caja</span>
             <MoneyDisplay amount={summary.totalSales} size="sm" />
           </div>
-          {(summary.totalYapeGross > 0 || summary.totalYape > 0) && (
+          {(summary.totalYapeCollected > 0 || summary.totalYape > 0 || summary.creditYapeCollected !== 0) && (
             <div className="flex justify-between py-1 text-fuchsia-700 dark:text-fuchsia-300">
               <span>Yape (no entra al cajón)</span>
-              <MoneyDisplay amount={summary.totalYape} size="sm" />
+              <MoneyDisplay amount={summary.totalYapeCollected} size="sm" />
             </div>
           )}
           <div className="flex justify-between py-1">

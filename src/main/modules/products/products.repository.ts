@@ -41,7 +41,9 @@ export function listProducts(db: Database.Database, filters: ProductListFilters)
   const conditions: string[] = [systemServiceExcludeSql('p')]
   const params: unknown[] = []
 
-  if (!filters.includeInactive) {
+  if (filters.onlyInactive) {
+    conditions.push('p.is_active = 0')
+  } else if (!filters.includeInactive) {
     conditions.push('p.is_active = 1')
   }
   if (filters.search?.trim()) {

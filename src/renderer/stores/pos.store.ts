@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { CartLine } from '@shared/types/sales'
+import { roundMoney } from '@shared/lib/currency'
 import { minQtyForCartLine } from '@shared/lib/product-packs'
 
 interface PosState {

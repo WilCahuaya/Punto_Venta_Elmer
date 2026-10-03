@@ -79,6 +79,8 @@ export interface ProductListFilters {
   categoryId?: number | null
   lowStockOnly?: boolean
   includeInactive?: boolean
+  /** Solo productos dados de baja (inactivos). */
+  onlyInactive?: boolean
 }
 
 export interface CategoryListFilters {

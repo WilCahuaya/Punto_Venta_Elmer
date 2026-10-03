@@ -124,7 +124,7 @@ export function CashPage(): React.JSX.Element {
                 <CashExpectedBreakdown session={current} />
                 <div className="grid gap-3 sm:grid-cols-2">
                   <SummaryCard title="Ventas efectivo" amount={current.totalSalesGross} />
-                  <SummaryCard title="Ventas Yape" amount={current.totalYapeGross} />
+                  <SummaryCard title="Ventas Yape" amount={current.totalYapeCollected} />
                   <SummaryCard
                     title="Devoluciones efectivo"
                     amount={current.totalReturns}
@@ -245,7 +245,7 @@ export function CashPage(): React.JSX.Element {
                         <MoneyDisplay amount={s.totalSales} size="sm" />
                       </td>
                       <td className="px-4 py-3">
-                        <MoneyDisplay amount={s.totalYape} size="sm" />
+                        <MoneyDisplay amount={s.totalYapeCollected} size="sm" />
                       </td>
                       <td className="px-4 py-3">
                         <MoneyDisplay amount={s.expectedAmount ?? 0} size="sm" />

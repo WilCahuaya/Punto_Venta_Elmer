@@ -9,7 +9,7 @@ import { MoneyDisplay } from '../../components/ui/MoneyDisplay'
 import { MoneyInput } from '../../components/ui/MoneyInput'
 import { NumberInput } from '../../components/ui/NumberInput'
 import { Select } from '../../components/ui/Select'
-import { barcodeToBase64, LABEL_BARCODE_OPTIONS } from '../../lib/barcode'
+import { barcodeToBase64, barcodesToBase64Map, errorMessage, LABEL_BARCODE_OPTIONS } from '../../lib/barcode'
 import { formatMoney } from '@shared/lib/currency'
 import { buildSingleLabelDocumentHtml } from '@shared/lib/label-html'
 import {
@@ -335,11 +335,17 @@ export function LabelsPage(): React.JSX.Element {
 
   async function buildBarcodeImages(): Promise<Record<string, string>> {
     const uniqueCodes = [...new Set(queue.map((i) => i.barcode))]
-    const barcodeImages: Record<string, string> = {}
-    for (const code of uniqueCodes) {
-      barcodeImages[code] = await barcodeToBase64(code, LABEL_BARCODE_OPTIONS)
+    const { images, failed } = await barcodesToBase64Map(uniqueCodes, LABEL_BARCODE_OPTIONS)
+    if (failed.length > 0) {
+      const sample = failed.slice(0, 5).join(', ')
+      throw new Error(
+        `No se pudieron generar ${failed.length} código(s): ${sample}${failed.length > 5 ? '…' : ''}`
+      )
     }
-    return barcodeImages
+    if (Object.keys(images).length === 0) {
+      throw new Error('No hay códigos de barras válidos en la cola')
+    }
+    return images
   }
 
   function buildPrintPayload(barcodeImages: Record<string, string>): LabelPrintPayload {
@@ -424,7 +430,7 @@ export function LabelsPage(): React.JSX.Element {
       )
       setPdfPreviewOpen(true)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error al generar vista previa')
+      setError(errorMessage(e, 'Error al generar vista previa'))
     } finally {
       setPreviewing(false)
     }
@@ -453,7 +459,7 @@ export function LabelsPage(): React.JSX.Element {
       clearQueue()
       closePdfPreview()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error al generar códigos')
+      setError(errorMessage(e, 'Error al generar códigos'))
     } finally {
       setPrinting(false)
     }
@@ -484,7 +490,7 @@ export function LabelsPage(): React.JSX.Element {
       setA4ModalOpen(false)
       closePdfPreview()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error al generar códigos')
+      setError(errorMessage(e, 'Error al generar códigos'))
     } finally {
       setPrinting(false)
     }
@@ -734,6 +740,7 @@ export function LabelsPage(): React.JSX.Element {
                     {presetId === 'custom' && (
                       <div className="grid grid-cols-2 gap-2">
                         <NumberInput
+                          id={`queue-width-${item.id}`}
                           label="Ancho"
                           min={15}
                           max={120}
@@ -742,6 +749,7 @@ export function LabelsPage(): React.JSX.Element {
                           onChange={(n) => updateQueueItem(item.id, { presetId: 'custom', widthMm: n })}
                         />
                         <NumberInput
+                          id={`queue-height-${item.id}`}
                           label="Alto"
                           min={8}
                           max={80}
@@ -752,6 +760,7 @@ export function LabelsPage(): React.JSX.Element {
                       </div>
                     )}
                     <NumberInput
+                      id={`queue-copies-${item.id}`}
                       label="Copias"
                       min={1}
                       max={500}

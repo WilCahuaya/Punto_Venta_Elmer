@@ -89,6 +89,7 @@ function buildSummary(row: CashSessionRow): CashSessionSummary {
     totalYape: roundMoney(totalYape),
     creditCashCollected: roundMoney(creditCashCollected),
     creditYapeCollected: roundMoney(creditYapeCollected),
+    totalYapeCollected: roundMoney(totalYape + creditYapeCollected),
     salesProfit: roundMoney(salesProfit),
     expectedInDrawer
   }
